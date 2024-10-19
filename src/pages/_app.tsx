@@ -1,6 +1,6 @@
-import React from 'react'
-import type { AppProps } from 'next/app'
-import { SessionProvider } from 'src/components/SessionProvider'
+// pages/_app.tsx
+import { AppProps } from 'next/app'
+import SessionProvider from '../components/SessionProvider'
 import '../styles/globals.css'
 
 function MyApp({ Component, pageProps }: AppProps) {

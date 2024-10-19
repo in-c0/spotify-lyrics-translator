@@ -1,7 +1,5 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+// pages/api/refresh.ts
+import type { NextApiRequest, NextApiResponse } from 'next'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -10,33 +8,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { refresh_token } = req.body
 
-  if (!refresh_token) {
-    return res.status(400).json({ error: 'Refresh token is required' })
-  }
+  console.log('Received refresh_token:', refresh_token) // Log for debugging
 
-  const params = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refresh_token,
-  })
+  if (!refresh_token) {
+    return res.status(400).json({ error: 'Missing refresh token' })
+  }
 
   try {
     const response = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64')
+        'Authorization': 'Basic ' + Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString('base64'),
       },
-      body: params
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+      }),
     })
 
-    if (!response.ok) {
-      throw new Error('Failed to refresh token')
+    const data = await response.json()
+
+    console.log('Spotify Refresh Token Response:', data) // Log Spotify's response
+
+    if (data.error) {
+      console.error('Spotify Refresh Token Error:', data.error_description)
+      return res.status(400).json({ error: data.error_description })
     }
 
-    const data = await response.json()
-    res.status(200).json(data)
+    res.status(200).json({
+      access_token: data.access_token,
+      expires_in: data.expires_in,
+      scope: data.scope,
+    })
   } catch (error) {
-    console.error('Token refresh error:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error('Error refreshing access token:', error)
+    res.status(500).json({ error: 'Internal Server Error' })
   }
 }
