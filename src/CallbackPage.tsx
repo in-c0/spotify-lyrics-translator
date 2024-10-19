@@ -1,30 +1,26 @@
 import React, { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useRouter } from 'next/router'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, Loader2 } from "lucide-react"
-import { setTokens } from './utils/tokenManager'
+import { setTokens } from 'src/utils/tokenManager'
+import { useSession } from 'src/components/SessionProvider'
 
-interface CallbackPageProps {
-  onLoginSuccess: () => void;
-}
-
-export default function CallbackPage({ onLoginSuccess }: CallbackPageProps) {
+export default function CallbackPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const navigate = useNavigate()
+  const router = useRouter()
+  const { login } = useSession()
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search)
-    const code = urlParams.get('code')
-    const error = urlParams.get('error')
+    const { code, error: urlError } = router.query
 
-    if (error) {
+    if (urlError) {
       setError('Failed to authenticate with Spotify')
       setIsLoading(false)
     } else if (code) {
-      exchangeCodeForToken(code)
+      exchangeCodeForToken(code as string)
     }
-  }, [])
+  }, [router.query])
 
   const exchangeCodeForToken = async (code: string) => {
     try {
@@ -38,8 +34,8 @@ export default function CallbackPage({ onLoginSuccess }: CallbackPageProps) {
       const data = await response.json()
       if (data.access_token) {
         setTokens(data)
-        onLoginSuccess()
-        navigate('/')
+        login(data.access_token)
+        router.push('/')
       } else {
         setError('Failed to obtain access token')
       }

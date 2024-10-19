@@ -1,4 +1,4 @@
-interface TokenResponse {
+export interface TokenResponse {
   access_token: string;
   refresh_token: string;
   expires_in: number;
@@ -51,7 +51,7 @@ export const refreshAccessToken = async (): Promise<TokenResponse | null> => {
       throw new Error('Failed to refresh token');
     }
 
-    const data = await response.json();
+    const data: TokenResponse = await response.json();
     return data;
   } catch (error) {
     console.error('Error refreshing access token:', error);
@@ -64,15 +64,4 @@ export const clearTokens = () => {
   refreshToken = null;
   expirationTime = null;
   localStorage.removeItem('spotifyRefreshToken');
-};
-
-export const initializeTokens = () => {
-  refreshToken = localStorage.getItem('spotifyRefreshToken');
-  if (refreshToken) {
-    refreshAccessToken().then((tokens) => {
-      if (tokens) {
-        setTokens(tokens);
-      }
-    });
-  }
 };
