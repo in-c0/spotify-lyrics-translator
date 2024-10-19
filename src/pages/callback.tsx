@@ -11,16 +11,18 @@ export default function CallbackPage() {
   const router = useRouter()
   const { login } = useSession()
 
-  useEffect(() => {
-    const { code, error: urlError } = router.query
-
+  useEffect(() => {    
+    if (!router.isReady) return; // Wait for the router to be ready
+  
+    const { code, error: urlError } = router.query;
+  
     if (urlError) {
-      setError('Failed to authenticate with Spotify')
-      setIsLoading(false)
+      setError('Failed to authenticate with Spotify');
+      setIsLoading(false);
     } else if (code) {
-      exchangeCodeForToken(code as string)
+      exchangeCodeForToken(code as string);
     }
-  }, [router.query])
+  }, [router.isReady, router.query]);  
 
   const exchangeCodeForToken = async (code: string) => {
     try {
@@ -29,7 +31,10 @@ export default function CallbackPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({
+          code,
+          redirect_uri: process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI
+        }),
       })
       const data = await response.json()
       if (data.access_token) {
@@ -44,7 +49,7 @@ export default function CallbackPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }  
 
   if (isLoading) {
     return (
