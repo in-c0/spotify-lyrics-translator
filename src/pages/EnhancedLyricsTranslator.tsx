@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
@@ -36,6 +36,7 @@ interface UserProfile {
 
 interface EnhancedLyricsTranslatorProps {
   accessToken: string | null;
+  refreshToken: Promise<void>;
   onLogout: () => void;
 }
 
@@ -191,6 +192,80 @@ export default function EnhancedLyricsTranslator({ onLogout }: EnhancedLyricsTra
       setIsLoading(false);
     }
   }, [accessToken]);
+
+  // Ref to store the interval ID
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Single useEffect for updating progress
+  useEffect(() => {
+    // Function to fetch and update progress
+    const updateProgress = async () => {
+      if (currentTrack) {
+        try {
+          const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.item && data.progress_ms !== undefined) {
+              const newProgress = (data.progress_ms / data.item.duration_ms) * 100;
+              setProgress(newProgress);
+              setIsPlaying(data.is_playing);
+              
+              // Optional: Update current track if it has changed
+              if (data.item.name !== currentTrack.name) {
+                setCurrentTrack({
+                  name: data.item.name,
+                  artist: data.item.artists[0].name,
+                  album: data.item.album.name,
+                  albumArt: data.item.album.images[0].url,
+                  duration_ms: data.item.duration_ms,
+                });
+                fetchLyrics(data.item.name, data.item.artists[0].name);
+              }
+            } else {
+              setError('No track information available');
+              setIsPlaying(false);
+            }
+          } else {
+            // Handle scenarios like no track playing or API errors
+            setError('Unable to fetch current playback position');
+            setIsPlaying(false);
+          }
+        } catch (error) {
+          console.error('Error updating progress:', error);
+          setError('Failed to update progress');
+        }
+      }
+    };
+
+    // If the track is playing, set up the interval
+    if (isPlaying && currentTrack) {
+      // Initial fetch to sync immediately
+      updateProgress();
+
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+
+      // Set up a new interval (e.g., every 2 seconds)
+      intervalRef.current = setInterval(updateProgress, 2000);
+    }
+
+    // If not playing, clear the interval
+    if (!isPlaying && intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isPlaying, currentTrack, fetchWithToken, fetchLyrics]);
+  
   
   const handleVolumeChange = async (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
