@@ -37,10 +37,9 @@ interface UserProfile {
 interface EnhancedLyricsTranslatorProps {
   accessToken: string | null;
   onLogout: () => void;
-  onTokenRefresh: () => Promise<void>;
 }
 
-export default function EnhancedLyricsTranslator({ accessToken, onLogout, onTokenRefresh }: EnhancedLyricsTranslatorProps) {
+export default function EnhancedLyricsTranslator({ onLogout }: EnhancedLyricsTranslatorProps) {
   const [lyrics, setLyrics] = useState<Lyric[]>([])
   const [showRomanization, setShowRomanization] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -52,85 +51,71 @@ export default function EnhancedLyricsTranslator({ accessToken, onLogout, onToke
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [accessToken, setAccessToken] = useState<string | null>(null);
 
-  const fetchWithToken = useCallback(async (url: string, options: RequestInit = {}) => {
+
+  const onTokenRefresh = async () => {
+    try {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
+  
+      const response = await fetch('/api/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+  
+      if (!response.ok) {
+        throw new Error('Failed to refresh access token');
+      }
+  
+      const data = await response.json();
+  
+      if (data.access_token) {
+        setAccessToken(data.access_token);
+        localStorage.setItem('access_token', data.access_token);
+      } else {
+        throw new Error('Failed to get new access token');
+      }
+    } catch (error) {
+      console.error('Token refresh error:', error);
+      onLogout();  // Log out if refresh fails
+    }
+  };
+  
+  
+  const fetchWithToken = useCallback(async (url: string, options: RequestInit = {}, retry = true) => {
+    console.log('Fetching:', url);
     try {
       const response = await fetch(url, {
         ...options,
         headers: {
           ...options.headers,
-          'Authorization': `Bearer ${accessToken}`
-        }
-      })
-      if (response.status === 401) {
-        await onTokenRefresh()
-        return fetchWithToken(url, options)
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      });
+  
+      if (response.status === 401 && retry) {
+        console.log('Token expired, refreshing token...');
+        await onTokenRefresh();
+  
+        // Retry the request with the refreshed token
+        return fetchWithToken(url, options, false);  // Pass `retry = false` to avoid infinite loop
       }
-      return response
+  
+      return response;
     } catch (error) {
-      console.error('Fetch error:', error)
-      throw error
+      console.error('Fetch error:', error);
+      throw error;
     }
-  }, [accessToken, onTokenRefresh])
+  }, [accessToken, onTokenRefresh]);
+  
 
-  useEffect(() => {
-    if (accessToken) {
-      fetchInitialData()
-    }
-  }, [accessToken])
-
-  const fetchInitialData = async () => {
-    setIsLoading(true)
-    try {
-      await Promise.all([
-        fetchCurrentTrack(),
-        fetchUserProfile()
-      ])
-    } catch (error) {
-      setError('Failed to fetch initial data')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const fetchCurrentTrack = async () => {
-    try {
-      const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing')
-      if (response.status === 204) {
-        setError('No track currently playing')
-        return
-      }
-      const data = await response.json()
-      setCurrentTrack({
-        name: data.item.name,
-        artist: data.item.artists[0].name,
-        album: data.item.album.name,
-        albumArt: data.item.album.images[0].url,
-        duration_ms: data.item.duration_ms
-      })
-      setIsPlaying(data.is_playing)
-      setProgress((data.progress_ms / data.item.duration_ms) * 100)
-      fetchLyrics(data.item.name, data.item.artists[0].name)
-    } catch (error) {
-      setError('Failed to fetch current track')
-    }
-  }
-
-  const fetchUserProfile = async () => {
-    try {
-      const response = await fetchWithToken('https://api.spotify.com/v1/me')
-      const data = await response.json()
-      setUserProfile({
-        name:  data.display_name,
-        email: data.email,
-        image: data.images?.[0]?.url || ''
-      })
-    } catch (error) {
-      setError('Failed to fetch user profile')
-    }
-  }
-
-  const fetchLyrics = async (trackName: string, artistName: string) => {
+  const fetchLyrics = useCallback(async (trackName: string, artistName: string) => {
     try {
       const response = await fetch(`/api/lyrics?track=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}`)
       const data = await response.json()
@@ -138,8 +123,76 @@ export default function EnhancedLyricsTranslator({ accessToken, onLogout, onToke
     } catch (error) {
       setError('Failed to fetch lyrics')
     }
-  }
+  }, []);
 
+  const fetchCurrentTrack = useCallback(async () => {
+    try {
+      const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing');
+      
+      if (response.status === 204) {
+        console.log('No track currently playing');
+        setError('No track currently playing');
+        setCurrentTrack(null);
+        return;
+      }
+  
+      const data = await response.json();
+      setCurrentTrack({
+        name: data.item.name,
+        artist: data.item.artists[0].name,
+        album: data.item.album.name,
+        albumArt: data.item.album.images[0].url,
+        duration_ms: data.item.duration_ms,
+      });
+      setIsPlaying(data.is_playing);
+      setProgress((data.progress_ms / data.item.duration_ms) * 100);
+      fetchLyrics(data.item.name, data.item.artists[0].name);
+    } catch (error) {
+      console.error('Error fetching current track:', error);
+      setError('Failed to fetch current track');
+    }
+  }, [fetchWithToken, fetchLyrics]);
+  
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      const response = await fetchWithToken('https://api.spotify.com/v1/me');
+      const data = await response.json();
+      console.log('User profile data:', data);
+      setUserProfile({
+        name: data.display_name,
+        email: data.email,
+        image: data.images?.[0]?.url || '',
+      });
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+      setError('Failed to fetch user profile');
+    }
+  }, [fetchWithToken]);
+
+  const fetchInitialData = useCallback(async () => {
+    console.log('Fetching initial data...');
+    setIsLoading(true);
+    setError(null);
+    try {
+      await Promise.all([fetchCurrentTrack(), fetchUserProfile()]);
+    } catch (error) {
+      console.error('Error fetching initial data:', error);
+      setError('Failed to fetch initial data');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchCurrentTrack, fetchUserProfile]);
+
+  useEffect(() => {
+    if (accessToken) {
+      console.log('Access token available, fetching initial data...');
+      fetchInitialData();
+    } else {
+      console.log('No access token available');
+      setIsLoading(false);
+    }
+  }, [accessToken]);
+  
   const handleVolumeChange = async (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -159,13 +212,19 @@ export default function EnhancedLyricsTranslator({ accessToken, onLogout, onToke
   const handlePlayPause = async () => {
     try {
       await fetchWithToken(`https://api.spotify.com/v1/me/player/${isPlaying ? 'pause' : 'play'}`, {
-        method: 'PUT'
-      })
-      setIsPlaying(!isPlaying)
+        method: 'PUT',
+      });
+      setIsPlaying(!isPlaying);
+  
+      // Add a small delay before re-fetching the track
+      setTimeout(() => {
+        fetchCurrentTrack();  // Fetch the current track after toggling play/pause
+      }, 1000);  // 1-second delay to avoid rapid re-fetching
     } catch (error) {
-      setError('Failed to play/pause track')
+      setError('Failed to play/pause track');
     }
-  }
+  };
+  
 
   const handleSkip = async (direction: 'next' | 'previous') => {
     try {
@@ -231,7 +290,7 @@ export default function EnhancedLyricsTranslator({ accessToken, onLogout, onToke
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">Spotify Lyrics Translator</h1>
             <div className="flex items-center space-x-2">
-              {accessToken ? (
+              {accessToken && userProfile ? ( // Check if userProfile is available
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
@@ -317,7 +376,7 @@ export default function EnhancedLyricsTranslator({ accessToken, onLogout, onToke
               <Button variant="ghost" size="icon" onClick={handlePlayPause} className="bg-green-500 hover:bg-green-600 text-black rounded-full transition-colors">
                 {isPlaying ? <Pause className="h-6 w-6" fill="currentColor" /> : <Play className="h-6 w-6" fill="currentColor" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={() => handleSkip('next')} className="hover:bg-zinc-700/50 transition-colors">
+              <Button variant="ghost"   size="icon" onClick={() => handleSkip('next')} className="hover:bg-zinc-700/50 transition-colors">
                 <SkipForward className="h-5 w-5" />
               </Button>
             </div>

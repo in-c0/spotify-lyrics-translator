@@ -9,10 +9,11 @@ let refreshToken: string | null = null;
 let expirationTime: number | null = null;
 
 export const setTokens = (tokens: TokenResponse) => {
-  accessToken = tokens.access_token;
-  refreshToken = tokens.refresh_token;
-  expirationTime = Date.now() + tokens.expires_in * 1000;
-  localStorage.setItem('spotifyRefreshToken', refreshToken);
+  expirationTime = Date.now() + tokens.expires_in * 500000; 
+  localStorage.setItem('access_token', tokens.access_token);
+  if (tokens.refresh_token) {
+    localStorage.setItem('refresh_token', tokens.refresh_token); 
+  }
 };
 
 export const getAccessToken = async (): Promise<string | null> => {

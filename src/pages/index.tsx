@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic'
 const EnhancedLyricsTranslator = dynamic(() => import('./EnhancedLyricsTranslator'), { ssr: false })
 
 export default function Home() {
-  const { isLoggedIn, accessToken, logout, refreshToken } = useSession()
+  const { isLoggedIn, accessToken, refreshToken, logout } = useSession()
 
   if (!isLoggedIn) {
     return <LoginPage />
@@ -15,8 +15,8 @@ export default function Home() {
   return (
     <EnhancedLyricsTranslator 
       accessToken={accessToken} 
+      refreshToken={refreshToken}
       onLogout={logout}
-      onTokenRefresh={refreshToken}
     />
   )
 }

@@ -8,6 +8,9 @@ export default function LoginPage() {
     const scopes = encodeURIComponent('user-read-private user-read-email user-read-playback-state user-modify-playback-state')
     const spotifyAuthUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&scope=${scopes}`
     
+    console.log("Client ID:", clientId); // Debugging log
+    console.log("Redirect URI:", redirectUri); // Debugging log
+    
     window.location.href = spotifyAuthUrl
   }
 

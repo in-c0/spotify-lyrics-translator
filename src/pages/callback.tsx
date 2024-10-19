@@ -33,23 +33,30 @@ export default function CallbackPage() {
         },
         body: JSON.stringify({
           code,
-          redirect_uri: process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI
+          redirect_uri: process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI,
         }),
-      })
-      const data = await response.json()
-      if (data.access_token) {
-        setTokens(data)
-        login(data.access_token)
-        router.push('/')
+      });
+      
+      const data = await response.json();
+      
+      if (data.access_token && data.refresh_token) {
+        setTokens(data);  // This should store both access token and refresh token
+  
+        // Log the user in with the new access token
+        login(data.access_token);
+        
+        // Redirect the user after successful authentication
+        router.push('/');
       } else {
-        setError('Failed to obtain access token')
+        setError('Failed to obtain access token');
       }
     } catch (error) {
-      setError('An error occurred during authentication')
+      setError('An error occurred during authentication');
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
-  }  
+  };
+  
 
   if (isLoading) {
     return (
