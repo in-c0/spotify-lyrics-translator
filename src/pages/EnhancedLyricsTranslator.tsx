@@ -1,10 +1,10 @@
 // components/EnhancedLyricsTranslator.tsx
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle, Loader2 } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react" // Ensure Loader2 is imported here
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { useRouter } from 'next/router'
 
 declare global {
   interface Window {
@@ -26,6 +27,7 @@ interface Lyric {
   original: string
   romanized: string
   translated: string
+  timestamp?: number // Optional: For synchronized lyrics
 }
 
 interface Track {
@@ -40,7 +42,7 @@ interface UserProfile {
   name: string
   email: string
   image: string
-  product?: string // To check if user is premium
+  product: string // To check if user has Premium
 }
 
 interface EnhancedLyricsTranslatorProps {
@@ -63,6 +65,8 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
   const [isLoading, setIsLoading] = useState(true)
   const [player, setPlayer] = useState<any>(null)
   const [deviceId, setDeviceId] = useState<string | null>(null)
+
+  const router = useRouter()
 
   const onTokenRefresh = useCallback(async () => {
     try {
@@ -145,10 +149,6 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
         return
       }
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch current track')
-      }
-
       const data = await response.json()
       setCurrentTrack({
         name: data.item.name,
@@ -178,10 +178,10 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
         name: data.display_name,
         email: data.email,
         image: data.images?.[0]?.url || '',
-        product: data.product, // To check if user is premium
+        product: data.product,
       })
 
-      // Check if user has a premium account
+      // Check if user has Premium
       if (data.product !== 'premium') {
         setError('Spotify Premium is required for this functionality.')
       }
@@ -324,7 +324,7 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
         player.disconnect()
       }
     }
-  }, [accessToken, fetchLyrics, player])
+  }, [accessToken, deviceId, fetchLyrics])
 
   // Control Playback Handlers
   const handlePlayPause = () => {
@@ -391,6 +391,42 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
     const remainingSeconds = seconds % 60
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
   }
+
+  // Timer for updating playback progress
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null
+
+    const updateProgress = async () => {
+      if (player && currentTrack) {
+        const state = await player.getCurrentState()
+        if (state) {
+          const currentPosition = state.position
+          const duration = currentTrack.duration_ms
+          const newProgress = (currentPosition / duration) * 100
+          setProgress(newProgress)
+
+          // Optional: Update currentLineIndex based on currentPosition
+          // Implement lyric synchronization logic here if needed
+        }
+      }
+    }
+
+    if (isPlaying && player && currentTrack) {
+      interval = setInterval(updateProgress, 1000) // Update every second
+    }
+
+    return () => {
+      if (interval) clearInterval(interval)
+    }
+  }, [isPlaying, player, currentTrack])
+
+  // Redirect to login if user doesn't have Premium
+  useEffect(() => {
+    if (userProfile && userProfile.product !== 'premium') {
+      setError('Spotify Premium is required for this functionality.')
+      // Optionally, log out the user or restrict access to certain features
+    }
+  }, [userProfile])
 
   if (isLoading) {
     return (
