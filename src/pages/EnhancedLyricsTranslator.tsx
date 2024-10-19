@@ -56,7 +56,7 @@ export default function EnhancedLyricsTranslator({ onLogout }: EnhancedLyricsTra
 
   const onTokenRefresh = async () => {
     try {
-      const refreshToken = localStorage.getItem('refresh_token');
+      const refreshToken = localStorage.getItem('refresh_token');  // Ensure refresh token is stored
       if (!refreshToken) {
         throw new Error('No refresh token available');
       }
@@ -83,7 +83,6 @@ export default function EnhancedLyricsTranslator({ onLogout }: EnhancedLyricsTra
       }
     } catch (error) {
       console.error('Token refresh error:', error);
-      onLogout();  // Log out if refresh fails
     }
   };
   
