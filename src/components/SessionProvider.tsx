@@ -1,89 +1,113 @@
 // components/SessionProvider.tsx
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 
+import React, { createContext, useContext, useEffect, useState } from 'react'
+import { useRouter } from 'next/router'
+
+// Define the shape of your session context
 interface SessionContextProps {
-  isLoggedIn: boolean
   accessToken: string | null
   refreshAccessToken: () => Promise<void>
   logout: () => void
-  setSession: (accessToken: string, refreshToken: string) => void
+  isLoggedIn: boolean
 }
 
 const SessionContext = createContext<SessionContextProps>({
-  isLoggedIn: false,
   accessToken: null,
   refreshAccessToken: async () => {},
   logout: () => {},
-  setSession: () => {},
+  isLoggedIn: false,
 })
 
-interface SessionProviderProps {
-  children: ReactNode
-}
+export const useSession = () => useContext(SessionContext)
 
-const SessionProvider: React.FC<SessionProviderProps> = ({ children }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [accessToken, setAccessToken] = useState<string | null>(null)
-  const [refreshTokenValue, setRefreshTokenValue] = useState<string | null>(null)
+  const [expiresAt, setExpiresAt] = useState<number | null>(null)
+  const router = useRouter()
 
+  // Load tokens from localStorage on mount
   useEffect(() => {
-    // On initial load, check if tokens are stored
     const storedAccessToken = localStorage.getItem('access_token')
     const storedRefreshToken = localStorage.getItem('refresh_token')
+    const storedExpiresIn = localStorage.getItem('expires_in')
 
-    if (storedAccessToken && storedRefreshToken) {
+    if (storedAccessToken && storedRefreshToken && storedExpiresIn) {
       setAccessToken(storedAccessToken)
-      setRefreshTokenValue(storedRefreshToken)
-      setIsLoggedIn(true)
+      const expiresIn = parseInt(storedExpiresIn)
+      setExpiresAt(Date.now() + expiresIn * 1000)
     }
   }, [])
 
-  const setSession = (token: string, refresh: string) => {
-    setAccessToken(token)
-    setRefreshTokenValue(refresh)
-    setIsLoggedIn(true)
-    localStorage.setItem('access_token', token)
-    localStorage.setItem('refresh_token', refresh)
-  }
+  // Refresh the access token 1 minute before it expires
+  useEffect(() => {
+    if (!expiresAt) return
 
-  const logout = () => {
-    setIsLoggedIn(false)
-    setAccessToken(null)
-    setRefreshTokenValue(null)
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-  }
+    const timeout = expiresAt - Date.now() - 60000 // 1 minute before expiration
 
+    if (timeout <= 0) {
+      refreshAccessToken()
+      return
+    }
+
+    const timer = setTimeout(() => {
+      refreshAccessToken()
+    }, timeout)
+
+    return () => clearTimeout(timer)
+  }, [expiresAt])
+
+  // Function to refresh the access token
   const refreshAccessToken = async () => {
+    const refreshToken = localStorage.getItem('refresh_token')
+    if (!refreshToken) {
+      logout()
+      return
+    }
+
     try {
-      const storedRefreshToken = localStorage.getItem('refresh_token')
-      if (!storedRefreshToken) throw new Error('No refresh token available')
       const response = await fetch('/api/refresh', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ refresh_token: storedRefreshToken }),
+        body: JSON.stringify({ refresh_token: refreshToken }),
       })
+
+      if (!response.ok) {
+        throw new Error('Failed to refresh access token')
+      }
+
       const data = await response.json()
+
       if (data.access_token) {
         setAccessToken(data.access_token)
         localStorage.setItem('access_token', data.access_token)
+        const expiresIn = data.expires_in
+        setExpiresAt(Date.now() + expiresIn * 1000)
       } else {
-        throw new Error('Failed to obtain new access token')
+        throw new Error('No access token returned')
       }
     } catch (error) {
-      console.error('Token refresh error:', error)
+      console.error('Error refreshing access token:', error)
       logout()
     }
   }
 
+  // Function to log out the user
+  const logout = () => {
+    setAccessToken(null)
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    localStorage.removeItem('expires_in')
+    router.push('/login')
+  }
+
+  // Derived property to determine if the user is logged in
+  const isLoggedIn = accessToken !== null
+
   return (
-    <SessionContext.Provider value={{ isLoggedIn, accessToken, refreshAccessToken, logout, setSession }}>
+    <SessionContext.Provider value={{ accessToken, refreshAccessToken, logout, isLoggedIn }}>
       {children}
     </SessionContext.Provider>
   )
 }
-
-export default SessionProvider
-export const useSession = () => useContext(SessionContext)

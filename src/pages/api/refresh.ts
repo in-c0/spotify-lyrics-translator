@@ -1,5 +1,6 @@
 // pages/api/refresh.ts
-import type { NextApiRequest, NextApiResponse } from 'next'
+
+import { NextApiRequest, NextApiResponse } from 'next'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'POST') {
@@ -8,41 +9,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { refresh_token } = req.body
 
-  console.log('Received refresh_token:', refresh_token) // Log for debugging
-
   if (!refresh_token) {
-    return res.status(400).json({ error: 'Missing refresh token' })
+    return res.status(400).json({ error: 'Refresh token is required' })
   }
+
+  const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID
+  const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET
+
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refresh_token,
+  })
+
+  const basicAuth = Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')
 
   try {
     const response = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString('base64'),
+        'Authorization': `Basic ${basicAuth}`,
       },
-      body: new URLSearchParams({
-        grant_type: 'refresh_token',
-        refresh_token,
-      }),
+      body: params.toString(),
     })
 
-    const data = await response.json()
-
-    console.log('Spotify Refresh Token Response:', data) // Log Spotify's response
-
-    if (data.error) {
-      console.error('Spotify Refresh Token Error:', data.error_description)
-      return res.status(400).json({ error: data.error_description })
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(`Failed to refresh token: ${errorData.error_description || 'Unknown error'}`)
     }
 
-    res.status(200).json({
-      access_token: data.access_token,
-      expires_in: data.expires_in,
-      scope: data.scope,
-    })
+    const data = await response.json()
+    res.status(200).json(data)
   } catch (error) {
-    console.error('Error refreshing access token:', error)
-    res.status(500).json({ error: 'Internal Server Error' })
+    console.error('Token refresh error:', error)
+    res.status(500).json({ error: 'Failed to refresh token' })
   }
 }

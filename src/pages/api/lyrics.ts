@@ -1,24 +1,22 @@
+// lyrics.tsx
 import { NextApiRequest, NextApiResponse } from 'next'
 import NodeCache from 'node-cache'
 
 // Initialize a cache with a TTL of 1 hour
 const lyricsCache = new NodeCache({ stdTTL: 3600 })
 
-// You would replace this with your actual lyrics API key
-const LYRICS_API_KEY = process.env.LYRICS_API_KEY
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const { track, artist } = req.query
+  const { track, artist, remix } = req.query
 
   if (!track || !artist) {
     return res.status(400).json({ error: 'Missing track or artist parameter' })
   }
 
-  const cacheKey = `${track}-${artist}`
+  const cacheKey = `${track}-${artist}-${remix}`
   const cachedLyrics = lyricsCache.get(cacheKey)
 
   if (cachedLyrics) {
@@ -26,8 +24,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const lyrics = await fetchLyrics(track as string, artist as string)
-    
+    const lyrics = await fetchLyrics(track as string, artist as string, remix === 'true')
+
     if (!lyrics) {
       return res.status(404).json({ error: 'Lyrics not found' })
     }
@@ -42,31 +40,63 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
-async function fetchLyrics(track: string, artist: string): Promise<any> {
-  // This is a placeholder implementation. You would replace this with an actual API call.
-  // For demonstration purposes, we're returning mock data.
-  
-  // Simulate API call delay
-  await new Promise(resolve => setTimeout(resolve, 1000))
+interface LyrixLine {
+  startTimeMs: string
+  words: string
+  syllables: any[]
+  endTimeMs: string
+}
 
-  // Mock lyrics data
-  const mockLyrics = [
-    {
-      original: "君の前前前世から僕は 君を探し始めたよ",
-      romanized: "Kimi no zenzenzense kara boku wa kimi wo sagashi hajimeta yo",
-      translated: "From your previous, previous, previous life, I began searching for you"
-    },
-    {
-      original: "その魂に一目惚れしたのさ",
-      romanized: "Sono tamashii ni hitomebore shita no sa",
-      translated: "I fell in love at first sight with that soul"
-    },
-    {
-      original: "君を探し始めたよ",
-      romanized: "Kimi wo sagashi hajimeta yo",
-      translated: "I started to search for you"
+interface LyrixResponse {
+  lyrics: {
+    syncType: string
+    lines: LyrixLine[]
+    // ... other fields
+  }
+  // ... other fields
+}
+
+interface Lyric {
+  original: string
+  romanized: string
+  translated: string
+  startTimeMs: number
+  endTimeMs: number
+}
+
+async function fetchLyrics(track: string, artist: string, remix: boolean): Promise<Lyric[] | null> {
+  try {
+    const encodedArtist = encodeURIComponent(artist)
+    const encodedTrack = encodeURIComponent(track)
+    const remixParam = remix ? '?remix=true' : ''
+
+    const url = `https://lyrix.vercel.app/getLyricsByName/${encodedArtist}/${encodedTrack}${remixParam}`
+
+    const response = await fetch(url)
+
+    if (!response.ok) {
+      console.error('Lyrix API responded with status:', response.status)
+      return null
     }
-  ]
 
-  return mockLyrics
+    const data: LyrixResponse = await response.json()
+
+    if (!data.lyrics || !data.lyrics.lines) {
+      return null
+    }
+
+    // Map Lyrix's response to your Lyric interface
+    const processedLyrics: Lyric[] = data.lyrics.lines.map(line => ({
+      original: line.words,
+      romanized: '', // Lyrix doesn't provide romanization
+      translated: '', // Lyrix doesn't provide translation
+      startTimeMs: parseInt(line.startTimeMs),
+      endTimeMs: parseInt(line.endTimeMs),
+    }))
+
+    return processedLyrics
+  } catch (error) {
+    console.error('Lyrix fetch error:', error)
+    throw error
+  }
 }

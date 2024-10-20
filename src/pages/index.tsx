@@ -4,7 +4,11 @@ import { useSession } from '../components/SessionProvider'
 import LoginPage from './login'
 import dynamic from 'next/dynamic'
 
-const EnhancedLyricsTranslator = dynamic(() => import('./EnhancedLyricsTranslator'), { ssr: false })
+// Dynamically import EnhancedLyricsTranslator with no SSR
+const EnhancedLyricsTranslator = dynamic(
+  () => import('./EnhancedLyricsTranslator'),
+  { ssr: false }
+)
 
 export default function Home() {
   const { isLoggedIn, accessToken, refreshAccessToken, logout } = useSession()
@@ -14,10 +18,10 @@ export default function Home() {
   }
 
   return (
-    <EnhancedLyricsTranslator 
-      accessToken={accessToken} 
-      refreshToken={refreshAccessToken}
+    <EnhancedLyricsTranslator
       onLogout={logout}
+      accessToken={accessToken}
+      refreshToken={refreshAccessToken}
     />
   )
 }

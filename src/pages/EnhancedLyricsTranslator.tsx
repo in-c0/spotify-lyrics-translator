@@ -1,10 +1,10 @@
-// components/EnhancedLyricsTranslator.tsx
+// EnhancedLyricsTranslator.tsx
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle, Loader2 } from "lucide-react" // Ensure Loader2 is imported here
+import { AlertCircle, Loader2 } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,20 +14,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useRouter } from 'next/router'
-
-declare global {
-  interface Window {
-    onSpotifyWebPlaybackSDKReady: () => void
-    Spotify: any
-  }
-}
 
 interface Lyric {
   original: string
   romanized: string
   translated: string
-  timestamp?: number // Optional: For synchronized lyrics
+  startTimeMs: number
+  endTimeMs: number
 }
 
 interface Track {
@@ -42,7 +35,6 @@ interface UserProfile {
   name: string
   email: string
   image: string
-  product: string // To check if user has Premium
 }
 
 interface EnhancedLyricsTranslatorProps {
@@ -51,7 +43,7 @@ interface EnhancedLyricsTranslatorProps {
   onLogout: () => void
 }
 
-export default function EnhancedLyricsTranslator({ accessToken, refreshToken, onLogout }: EnhancedLyricsTranslatorProps) {
+export default function EnhancedLyricsTranslator({ refreshToken, onLogout, accessToken }: EnhancedLyricsTranslatorProps) {
   const [lyrics, setLyrics] = useState<Lyric[]>([])
   const [showRomanization, setShowRomanization] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -63,90 +55,82 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [player, setPlayer] = useState<any>(null)
-  const [deviceId, setDeviceId] = useState<string | null>(null)
 
-  const router = useRouter()
-
+  // Wrap onTokenRefresh in useCallback to prevent it from being recreated on every render
   const onTokenRefresh = useCallback(async () => {
-    try {
-      await refreshToken()
-    } catch (error) {
-      console.error('Token refresh error:', error)
-    }
+    await refreshToken()
+  }, [refreshToken])
 
-    if (deviceId && accessToken) {
+  // Fetch with token, retry once on 401
+  const fetchWithToken = useCallback(
+    async (url: string, options: RequestInit = {}, retry = true) => {
+      console.log('Fetching:', url)
       try {
-        const response = await fetch('https://api.spotify.com/v1/me/player', {
-          method: 'PUT',
+        const response = await fetch(url, {
+          ...options,
           headers: {
-            'Content-Type': 'application/json',
+            ...options.headers,
             'Authorization': `Bearer ${accessToken}`,
           },
-          body: JSON.stringify({
-            device_ids: [deviceId],
-            play: true,
-          }),
         })
 
-        if (!response.ok) {
-          console.error('Failed to transfer playback after token refresh')
+        if (response.status === 401 && retry) {
+          console.log('Token expired, refreshing token...')
+          await onTokenRefresh()
+
+          // Retry the request with the refreshed token
+          return fetchWithToken(url, options, false) // Pass `retry = false` to avoid infinite loop
         }
+
+        return response
       } catch (error) {
-        console.error('Error transferring playback after token refresh:', error)
+        console.error('Fetch error:', error)
+        throw error
       }
-    }
-  }, [deviceId, accessToken, refreshToken])
+    },
+    [accessToken, onTokenRefresh]
+  )
 
-  const fetchWithToken = useCallback(async (url: string, options: RequestInit = {}, retry = true) => {
-    console.log('Fetching:', url)
-    try {
-      const response = await fetch(url, {
-        ...options,
-        headers: {
-          ...options.headers,
-          'Authorization': `Bearer ${accessToken}`,
-        },
-      })
-
-      if (response.status === 401 && retry) {
-        console.log('Token expired, refreshing token...')
-        await onTokenRefresh()
-
-        // Retry the request with the refreshed token
-        return fetchWithToken(url, options, false)
-      }
-
-      return response
-    } catch (error) {
-      console.error('Fetch error:', error)
-      throw error
-    }
-  }, [accessToken, onTokenRefresh])
-
+  // Fetch lyrics from the API route
   const fetchLyrics = useCallback(async (trackName: string, artistName: string) => {
     try {
+      setError(null) // Reset error state before fetching
+      setLyrics([]) // Clear existing lyrics
       const response = await fetch(`/api/lyrics?track=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}`)
       if (!response.ok) {
-        throw new Error('Failed to fetch lyrics')
+        if (response.status === 404) {
+          setError('Lyrics not found for this track.')
+        } else {
+          setError('Failed to fetch lyrics.')
+        }
+        return
       }
       const data = await response.json()
-      setLyrics(data.lyrics)
+      if (data.lyrics && data.lyrics.length > 0) {
+        setLyrics(data.lyrics)
+      } else {
+        setError('Lyrics not available for this track.')
+      }
     } catch (error) {
-      console.error(error)
-      setError('Failed to fetch lyrics')
+      console.error('Error fetching lyrics:', error)
+      setError('An unexpected error occurred while fetching lyrics.')
     }
   }, [])
 
+  // Fetch the currently playing track
   const fetchCurrentTrack = useCallback(async () => {
     try {
       const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing')
-      
+
       if (response.status === 204) {
         console.log('No track currently playing')
-        setError('No track currently playing')
+        setError('No track is currently playing.')
         setCurrentTrack(null)
         return
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch current track.')
       }
 
       const data = await response.json()
@@ -162,15 +146,16 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
       fetchLyrics(data.item.name, data.item.artists[0].name)
     } catch (error) {
       console.error('Error fetching current track:', error)
-      setError('Failed to fetch current track')
+      setError('Failed to fetch the current track.')
     }
   }, [fetchWithToken, fetchLyrics])
 
+  // Fetch user profile from Spotify
   const fetchUserProfile = useCallback(async () => {
     try {
       const response = await fetchWithToken('https://api.spotify.com/v1/me')
       if (!response.ok) {
-        throw new Error('Failed to fetch user profile')
+        throw new Error('Failed to fetch user profile.')
       }
       const data = await response.json()
       console.log('User profile data:', data)
@@ -178,19 +163,14 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
         name: data.display_name,
         email: data.email,
         image: data.images?.[0]?.url || '',
-        product: data.product,
       })
-
-      // Check if user has Premium
-      if (data.product !== 'premium') {
-        setError('Spotify Premium is required for this functionality.')
-      }
     } catch (error) {
       console.error('Error fetching user profile:', error)
-      setError('Failed to fetch user profile')
+      setError('Failed to fetch user profile.')
     }
   }, [fetchWithToken])
 
+  // Fetch initial data (current track and user profile)
   const fetchInitialData = useCallback(async () => {
     console.log('Fetching initial data...')
     setIsLoading(true)
@@ -199,12 +179,13 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
       await Promise.all([fetchCurrentTrack(), fetchUserProfile()])
     } catch (error) {
       console.error('Error fetching initial data:', error)
-      setError('Failed to fetch initial data')
+      setError('Failed to fetch initial data.')
     } finally {
       setIsLoading(false)
     }
   }, [fetchCurrentTrack, fetchUserProfile])
 
+  // Effect to fetch data when accessToken is available
   useEffect(() => {
     if (accessToken) {
       console.log('Access token available, fetching initial data...')
@@ -215,219 +196,199 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
     }
   }, [accessToken, fetchInitialData])
 
-  // Initialize Spotify Player
+  // Ref to store the interval ID
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Effect to update progress and handle track changes
   useEffect(() => {
-    if (!accessToken) return
+    // Function to fetch and update progress
+    const updateProgress = async () => {
+      if (currentTrack) {
+        try {
+          const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing')
+          if (response.ok) {
+            const data = await response.json()
+            if (data.item && data.progress_ms !== undefined) {
+              const newProgress = (data.progress_ms / data.item.duration_ms) * 100
+              setProgress(newProgress)
+              setIsPlaying(data.is_playing)
 
-    window.onSpotifyWebPlaybackSDKReady = () => {
-      if (!accessToken) {
-        console.error('Access token is required for Spotify Player')
-        setIsLoading(false)
-        return
-      }
-
-      const spotifyPlayer = new window.Spotify.Player({
-        name: 'Spotify Lyrics Translator',
-        getOAuthToken: (cb: (token: string) => void) => { cb(accessToken); },
-        volume: 0.5
-      })
-
-      setPlayer(spotifyPlayer)
-
-      // Error handling
-      spotifyPlayer.addListener('initialization_error', ({ message }: { message: string }) => {
-        console.error('Initialization Error:', message)
-        setError(message)
-      })
-      spotifyPlayer.addListener('authentication_error', ({ message }: { message: string }) => {
-        console.error('Authentication Error:', message)
-        setError(message)
-      })
-      spotifyPlayer.addListener('account_error', ({ message }: { message: string }) => {
-        console.error('Account Error:', message)
-        setError(message)
-      })
-      spotifyPlayer.addListener('playback_error', ({ message }: { message: string }) => {
-        console.error('Playback Error:', message)
-        setError(message)
-      })
-
-      // Playback status updates
-      spotifyPlayer.addListener('player_state_changed', (state: any) => {
-        if (!state) {
-          return
-        }
-
-        setIsPlaying(!state.paused)
-        setProgress((state.position / state.duration) * 100)
-        setCurrentTrack({
-          name: state.track_window.current_track.name,
-          artist: state.track_window.current_track.artists.map((artist: any) => artist.name).join(', '),
-          album: state.track_window.current_track.album.name,
-          albumArt: state.track_window.current_track.album.images[0].url,
-          duration_ms: state.duration
-        })
-
-        setCurrentLineIndex(0) // Reset lyrics index
-
-        fetchLyrics(state.track_window.current_track.name, state.track_window.current_track.artists[0].name)
-      })
-
-      // Ready
-      spotifyPlayer.addListener('ready', ({ device_id }: { device_id: string }) => {
-        console.log('Ready with Device ID', device_id)
-        setDeviceId(device_id)
-
-        // Transfer playback to the Web Playback SDK device
-        fetch('https://api.spotify.com/v1/me/player', {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`
-          },
-          body: JSON.stringify({
-            "device_ids": [device_id],
-            "play": true,
-          }),
-        }).then(response => {
-          if (!response.ok) {
-            console.error('Failed to transfer playback')
+              // Optional: Update current track if it has changed
+              if (data.item.name !== currentTrack.name || data.item.artists[0].name !== currentTrack.artist) {
+                setCurrentTrack({
+                  name: data.item.name,
+                  artist: data.item.artists[0].name,
+                  album: data.item.album.name,
+                  albumArt: data.item.album.images[0].url,
+                  duration_ms: data.item.duration_ms,
+                })
+                fetchLyrics(data.item.name, data.item.artists[0].name)
+              }
+            } else {
+              setError('No track information available.')
+              setIsPlaying(false)
+            }
+          } else if (response.status === 204) {
+            setError('No track is currently playing.')
+            setCurrentTrack(null)
+            setIsPlaying(false)
+          } else {
+            setError('Unable to fetch current playback position.')
+            setIsPlaying(false)
           }
-        }).catch(error => {
-          console.error('Error transferring playback:', error)
-        })
-      })
-
-      // Not Ready
-      spotifyPlayer.addListener('not_ready', ({ device_id }: { device_id: string }) => {
-        console.log('Device ID has gone offline', device_id)
-      })
-
-      // Connect to the player!
-      spotifyPlayer.connect().then(success => {
-        if (success) {
-          console.log('The Web Playback SDK successfully connected to Spotify!')
+        } catch (error) {
+          console.error('Error updating progress:', error)
+          setError('Failed to update progress.')
         }
-      })
-    }
-
-    // Dynamically load the Spotify SDK if not already loaded
-    if (!window.Spotify) {
-      const script = document.createElement('script')
-      script.src = 'https://sdk.scdn.co/spotify-player.js'
-      script.async = true
-      document.body.appendChild(script)
-    }
-
-    return () => {
-      if (player) {
-        player.disconnect()
       }
     }
-  }, [accessToken, deviceId, fetchLyrics])
 
-  // Control Playback Handlers
-  const handlePlayPause = () => {
-    if (!player) return
+    // If the track is playing, set up the interval
+    if (isPlaying && currentTrack) {
+      // Initial fetch to sync immediately
+      updateProgress()
 
-    player.togglePlay().catch((err: any) => {
-      console.error('Failed to toggle play/pause:', err)
-      setError('Failed to toggle play/pause')
-    })
+      // Clear any existing interval
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+
+      // Set up a new interval (every 1 second)
+      intervalRef.current = setInterval(updateProgress, 1000)
+      console.log('Interval set for updating progress every second.')
+    }
+
+    // If not playing, clear the interval
+    if (!isPlaying && intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+      console.log('Interval cleared as isPlaying is false.')
+    }
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+        console.log('Interval cleared on cleanup.')
+      }
+    }
+  }, [isPlaying, currentTrack, fetchWithToken, fetchLyrics])
+
+  // Handle volume change
+  const handleVolumeChange = async (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const newVolume = Math.round((x / rect.width) * 100)
+    setVolume(Math.max(0, Math.min(100, newVolume)))
+    setIsMuted(false)
+    try {
+      await fetchWithToken('https://api.spotify.com/v1/me/player/volume', {
+        method: 'PUT',
+        body: JSON.stringify({ volume_percent: newVolume }),
+      })
+    } catch (error) {
+      console.error('Error updating volume:', error)
+      setError('Failed to update volume.')
+    }
   }
 
-  const handleSkipNext = () => {
-    if (!player) return
+  // Handle play/pause toggle
+  const handlePlayPause = async () => {
+    try {
+      await fetchWithToken(`https://api.spotify.com/v1/me/player/${isPlaying ? 'pause' : 'play'}`, {
+        method: 'PUT',
+      })
+      setIsPlaying(!isPlaying)
 
-    player.nextTrack().catch((err: any) => {
-      console.error('Failed to skip to next track:', err)
-      setError('Failed to skip to next track')
-    })
+      // Add a small delay before re-fetching the track
+      setTimeout(() => {
+        fetchCurrentTrack() // Fetch the current track after toggling play/pause
+      }, 1000) // 1-second delay to avoid rapid re-fetching
+    } catch (error) {
+      console.error('Error toggling play/pause:', error)
+      setError('Failed to play/pause track.')
+    }
   }
 
-  const handleSkipPrevious = () => {
-    if (!player) return
-
-    player.previousTrack().catch((err: any) => {
-      console.error('Failed to skip to previous track:', err)
-      setError('Failed to skip to previous track')
-    })
+  // Handle skipping tracks
+  const handleSkip = async (direction: 'next' | 'previous') => {
+    try {
+      await fetchWithToken(`https://api.spotify.com/v1/me/player/${direction}`, {
+        method: 'POST',
+      })
+      fetchCurrentTrack()
+    } catch (error) {
+      console.error(`Error skipping ${direction}:`, error)
+      setError(`Failed to skip to the ${direction} track.`)
+    }
   }
 
-  const handleSeek = (percentage: number) => {
-    if (!player || !currentTrack) return
+  // Handle seeking within the track
+  const handleSeek = async (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!currentTrack) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const x = e.clientX - rect.left
+    const newProgress = (x / rect.width) * 100
+    setProgress(newProgress)
 
-    const position_ms = Math.round((percentage / 100) * currentTrack.duration_ms)
-    player.seek(position_ms).catch((err: any) => {
-      console.error('Failed to seek:', err)
-      setError('Failed to seek')
-    })
+    const position_ms = Math.round((newProgress / 100) * currentTrack.duration_ms)
+    try {
+      await fetchWithToken(`https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`, {
+        method: 'PUT',
+      })
+    } catch (error) {
+      console.error('Error seeking track:', error)
+      setError('Failed to seek within the track.')
+    }
   }
 
-  const handleVolumeChange = (volumePercentage: number) => {
-    if (!player) return
-
-    const volumeDecimal = volumePercentage / 100
-    player.setVolume(volumeDecimal).catch((err: any) => {
-      console.error('Failed to set volume:', err)
-      setError('Failed to set volume')
-    })
-  }
-
-  const toggleMute = () => {
+  // Handle mute toggle
+  const toggleMute = async () => {
     const newMutedState = !isMuted
     setIsMuted(newMutedState)
-    if (newMutedState) {
-      handleVolumeChange(0)
-    } else {
-      handleVolumeChange(volume)
-    }
-  }
-
-  // Format time helper
-  const formatTime = (ms: number) => {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
-  }
-
-  // Timer for updating playback progress
-  useEffect(() => {
-    let interval: NodeJS.Timeout | null = null
-
-    const updateProgress = async () => {
-      if (player && currentTrack) {
-        const state = await player.getCurrentState()
-        if (state) {
-          const currentPosition = state.position
-          const duration = currentTrack.duration_ms
-          const newProgress = (currentPosition / duration) * 100
-          setProgress(newProgress)
-
-          // Optional: Update currentLineIndex based on currentPosition
-          // Implement lyric synchronization logic here if needed
-        }
+    try {
+      await fetchWithToken('https://api.spotify.com/v1/me/player/volume', {
+        method: 'PUT',
+        body: JSON.stringify({ volume_percent: newMutedState ? 0 : volume }),
+      })
+      if (newMutedState) {
+        setVolume(0)
+      } else {
+        setVolume(70) // Restore to previous volume or a default value
       }
+    } catch (error) {
+      console.error('Error toggling mute:', error)
+      setError('Failed to toggle mute.')
     }
+  }
 
-    if (isPlaying && player && currentTrack) {
-      interval = setInterval(updateProgress, 1000) // Update every second
-    }
+  // Format milliseconds to mm:ss
+  const formatTime = (ms: number) => {
+    const totalSeconds = Math.floor(ms / 1000)
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`
+  }
 
-    return () => {
-      if (interval) clearInterval(interval)
-    }
-  }, [isPlaying, player, currentTrack])
-
-  // Redirect to login if user doesn't have Premium
+  // Effect to sync lyrics highlighting with song progress
   useEffect(() => {
-    if (userProfile && userProfile.product !== 'premium') {
-      setError('Spotify Premium is required for this functionality.')
-      // Optionally, log out the user or restrict access to certain features
-    }
-  }, [userProfile])
+    if (lyrics.length === 0 || !currentTrack) return
 
+    // Highlight current lyric line based on progress
+    const currentTimeMs = (progress / 100) * currentTrack.duration_ms
+    const currentLyricIndex = lyrics.findIndex(
+      (lyric, index) =>
+        currentTimeMs >= lyric.startTimeMs &&
+        (index === lyrics.length - 1 || currentTimeMs < lyrics[index + 1].startTimeMs)
+    )
+
+    if (currentLyricIndex !== -1 && currentLyricIndex !== currentLineIndex) {
+      setCurrentLineIndex(currentLyricIndex)
+    }
+  }, [progress, lyrics, currentLineIndex, currentTrack])
+
+  // Render loading state
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-zinc-900 to-black text-white">
@@ -441,6 +402,7 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
     <div className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-b from-zinc-900 to-black text-white p-8">
       <div className="w-full max-w-3xl bg-zinc-800/50 rounded-lg shadow-lg overflow-hidden backdrop-blur-md">
         <div className="p-6">
+          {/* Header Section */}
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">Spotify Lyrics Translator</h1>
             <div className="flex items-center space-x-2">
@@ -449,16 +411,16 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={userProfile?.image} alt={userProfile?.name} />
-                        <AvatarFallback>{userProfile?.name?.charAt(0)}</AvatarFallback>
+                        <AvatarImage src={userProfile.image} alt={userProfile.name} />
+                        <AvatarFallback>{userProfile.name.charAt(0)}</AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-56" align="end" forceMount>
                     <DropdownMenuLabel className="font-normal">
                       <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">{userProfile?.name}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{userProfile?.email}</p>
+                        <p className="text-sm font-medium leading-none">{userProfile.name}</p>
+                        <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>
                       </div>
                     </DropdownMenuLabel>
                     <DropdownMenuSeparator />
@@ -475,6 +437,8 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
               )}
             </div>
           </div>
+
+          {/* Error Alert */}
           {error && (
             <Alert variant="destructive" className="mb-4">
               <AlertCircle className="h-4 w-4" />
@@ -482,6 +446,8 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
+
+          {/* Current Track Information */}
           <div className="flex items-center mb-6">
             <div className="w-16 h-16 bg-zinc-700 rounded-md mr-4">
               {currentTrack?.albumArt ? (
@@ -495,48 +461,54 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
               <p className="text-zinc-400">{currentTrack?.artist || 'Unknown artist'}</p>
             </div>
           </div>
+
+          {/* Lyrics Section */}
           <div className="space-y-4 mb-6 h-64 overflow-y-auto overflow-x-hidden hide-scrollbar pr-4">
-            {lyrics.map((line, index) => (
-              <div key={index} 
-                   className={`transition-all duration-300 ${index === currentLineIndex ? 'scale-105 text-green-400' : 'scale-100 text-white'}`}>
-                <div className="pl-2 -ml-2">
-                  <p className="text-lg font-semibold">{line.original}</p>
-                  {showRomanization && <p className="text-sm text-zinc-400">{line.romanized}</p>}
-                  <p className="text-sm text-zinc-300">{line.translated}</p>
+            {lyrics.length > 0 ? (
+              lyrics.map((line, index) => (
+                <div
+                  key={index}
+                  className={`transition-all duration-300 ${index === currentLineIndex ? 'scale-105 text-green-400' : 'scale-100 text-white'}`}
+                >
+                  <div className="pl-2 -ml-2">
+                    <p className="text-lg font-semibold">{line.original}</p>
+                    {showRomanization && <p className="text-sm text-zinc-400">{line.romanized}</p>}
+                    <p className="text-sm text-zinc-300">{line.translated}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            ) : (
+              <p className="text-center text-zinc-400">Lyrics not available for this track.</p>
+            )}
           </div>
+
+          {/* Progress Bar */}
           <div className="mb-4">
             <div className="flex justify-between text-xs text-zinc-400 mb-1">
-              <span>{currentTrack ? formatTime((currentTrack.duration_ms * progress) / 100) : '0:00'}</span>
+              <span>{currentTrack ? formatTime(currentTrack.duration_ms * (progress / 100)) : '0:00'}</span>
               <span>{currentTrack ? formatTime(currentTrack.duration_ms) : '0:00'}</span>
             </div>
-            <div 
+            <div
               className="w-full bg-zinc-600 rounded-full h-1 overflow-hidden cursor-pointer"
-              onClick={(e) => {
-                if (!currentTrack) return
-                const rect = e.currentTarget.getBoundingClientRect()
-                const x = e.clientX - rect.left
-                const percentage = (x / rect.width) * 100
-                handleSeek(percentage)
-              }}
+              onClick={handleSeek}
             >
-              <div 
+              <div
                 className="bg-green-500 h-full rounded-full transition-all duration-100 ease-linear"
                 style={{ width: `${progress}%` }}
               ></div>
             </div>
           </div>
+
+          {/* Playback Controls */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon" onClick={handleSkipPrevious} className="hover:bg-zinc-700/50 transition-colors">
+              <Button variant="ghost" size="icon" onClick={() => handleSkip('previous')} className="hover:bg-zinc-700/50 transition-colors">
                 <SkipBack className="h-5 w-5" />
               </Button>
               <Button variant="ghost" size="icon" onClick={handlePlayPause} className="bg-green-500 hover:bg-green-600 text-black rounded-full transition-colors">
                 {isPlaying ? <Pause className="h-6 w-6" fill="currentColor" /> : <Play className="h-6 w-6" fill="currentColor" />}
               </Button>
-              <Button variant="ghost" size="icon" onClick={handleSkipNext} className="hover:bg-zinc-700/50 transition-colors">
+              <Button variant="ghost" size="icon" onClick={() => handleSkip('next')} className="hover:bg-zinc-700/50 transition-colors">
                 <SkipForward className="h-5 w-5" />
               </Button>
             </div>
@@ -544,25 +516,19 @@ export default function EnhancedLyricsTranslator({ accessToken, refreshToken, on
               <Button variant="ghost" size="icon" onClick={toggleMute} className="hover:bg-zinc-700/50 transition-colors">
                 {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
               </Button>
-              <div 
+              <div
                 className="w-24 bg-zinc-600 rounded-full h-1 overflow-hidden cursor-pointer"
-                onClick={(e) => {
-                  if (!currentTrack) return
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  const x = e.clientX - rect.left
-                  const newVolume = Math.round((x / rect.width) * 100)
-                  setVolume(newVolume)
-                  setIsMuted(newVolume === 0)
-                  handleVolumeChange(newVolume)
-                }}
+                onClick={handleVolumeChange}
               >
-                <div 
+                <div
                   className="bg-white h-full rounded-full"
                   style={{ width: `${isMuted ? 0 : volume}%` }}
                 ></div>
               </div>
             </div>
           </div>
+
+          {/* Settings */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Switch

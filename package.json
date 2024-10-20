@@ -26,6 +26,7 @@
   },
   "homepage": "https://github.com/in-c0/spotify-lyrics-translator#readme",
   "dependencies": {
+    "@google-cloud/translate": "^8.5.0",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
     "@radix-ui/react-slot": "^1.1.0",
@@ -39,7 +40,8 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.27.0",
     "tailwind-merge": "^2.5.4",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "wanakana": "^5.3.1"
   },
   "devDependencies": {
     "@types/node": "22.7.6",
