@@ -1,4 +1,5 @@
-// EnhancedLyricsTranslator.tsx
+// components/EnhancedLyricsTranslator.tsx
+
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
@@ -14,10 +15,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import LanguageSettings from './LanguageSettings' // Ensure correct import path
 
 interface Lyric {
   original: string
-  romanized: string
   translated: string
   startTimeMs: number
   endTimeMs: number
@@ -56,7 +57,17 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Wrap onTokenRefresh in useCallback to prevent it from being recreated on every render
+  // Translation settings state
+  const [fromLanguage, setFromLanguage] = useState<string>('auto') // Default to auto-detect
+  const [toLanguage, setToLanguage] = useState<string>('en') // Default to English
+  const [rubyText, setRubyText] = useState<boolean>(false)
+  const [hangulSystem, setHangulSystem] = useState<string>('Revised')
+  const [japaneseTarget, setJapaneseTarget] = useState<string>('Romaji')
+  const [japaneseMode, setJapaneseMode] = useState<string>('Normal')
+  const [romajiSystem, setRomajiSystem] = useState<string>('Hepburn')
+  const [okuriganaDelimiter, setOkuriganaDelimiter] = useState<string>('( )')
+
+  // Function to refresh access token
   const onTokenRefresh = useCallback(async () => {
     await refreshToken()
   }, [refreshToken])
@@ -91,6 +102,44 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     [accessToken, onTokenRefresh]
   )
 
+  // Translate lyrics using the backend API
+  const translateLyrics = useCallback(async (lyricsToTranslate: Lyric[]) => {
+    if (!toLanguage) return
+
+    try {
+      const response = await fetch('/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: lyricsToTranslate.map(line => line.original),
+          sourceLang: fromLanguage === 'auto' ? 'auto' : fromLanguage.toLowerCase(),
+          targetLang: toLanguage.toLowerCase(),
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to translate lyrics.')
+      }
+
+      const data = await response.json()
+      const translatedText: string[] = data.translatedText
+
+      // Map translated text back to lyrics
+      const updatedLyrics: Lyric[] = lyricsToTranslate.map((line, index) => ({
+        ...line,
+        translated: translatedText[index] || '',
+      }))
+
+      setLyrics(updatedLyrics)
+    } catch (error: any) {
+      console.error('Translation error:', error)
+      setError(error.message || 'Failed to translate lyrics.')
+    }
+  }, [fromLanguage, toLanguage])
+
   // Fetch lyrics from the API route
   const fetchLyrics = useCallback(async (trackName: string, artistName: string) => {
     try {
@@ -107,7 +156,16 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
       }
       const data = await response.json()
       if (data.lyrics && data.lyrics.length > 0) {
-        setLyrics(data.lyrics)
+        // Initialize translated lyrics as empty strings
+        const initialLyrics: Lyric[] = data.lyrics.map((line: any) => ({
+          original: line.original,
+          translated: '',
+          startTimeMs: line.startTimeMs,
+          endTimeMs: line.endTimeMs,
+        }))
+        setLyrics(initialLyrics)
+        // After setting original lyrics, initiate translation
+        translateLyrics(initialLyrics)
       } else {
         setError('Lyrics not available for this track.')
       }
@@ -115,7 +173,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
       console.error('Error fetching lyrics:', error)
       setError('An unexpected error occurred while fetching lyrics.')
     }
-  }, [])
+  }, [translateLyrics])
 
   // Fetch the currently playing track
   const fetchCurrentTrack = useCallback(async () => {
@@ -126,6 +184,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
         console.log('No track currently playing')
         setError('No track is currently playing.')
         setCurrentTrack(null)
+        setLyrics([])
         return
       }
 
@@ -438,6 +497,26 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
             </div>
           </div>
 
+          {/* Language Settings */}
+          <LanguageSettings
+            fromLanguage={fromLanguage}
+            toLanguage={toLanguage}
+            setFromLanguage={setFromLanguage}
+            setToLanguage={setToLanguage}
+            rubyText={rubyText}
+            setRubyText={setRubyText}
+            hangulSystem={hangulSystem}
+            setHangulSystem={setHangulSystem}
+            japaneseTarget={japaneseTarget}
+            setJapaneseTarget={setJapaneseTarget}
+            japaneseMode={japaneseMode}
+            setJapaneseMode={setJapaneseMode}
+            romajiSystem={romajiSystem}
+            setRomajiSystem={setRomajiSystem}
+            okuriganaDelimiter={okuriganaDelimiter}
+            setOkuriganaDelimiter={setOkuriganaDelimiter}
+          />
+
           {/* Error Alert */}
           {error && (
             <Alert variant="destructive" className="mb-4">
@@ -472,8 +551,8 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                 >
                   <div className="pl-2 -ml-2">
                     <p className="text-lg font-semibold">{line.original}</p>
-                    {showRomanization && <p className="text-sm text-zinc-400">{line.romanized}</p>}
-                    <p className="text-sm text-zinc-300">{line.translated}</p>
+                    {/* Display translated lyrics if available */}
+                    {line.translated && <p className="text-sm text-zinc-300">{line.translated}</p>}
                   </div>
                 </div>
               ))
@@ -525,19 +604,6 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                   style={{ width: `${isMuted ? 0 : volume}%` }}
                 ></div>
               </div>
-            </div>
-          </div>
-
-          {/* Settings */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="romanization"
-                checked={showRomanization}
-                onCheckedChange={setShowRomanization}
-                className="bg-zinc-600 data-[state=checked]:bg-green-500"
-              />
-              <label htmlFor="romanization" className="text-sm">Show Romanization</label>
             </div>
           </div>
         </div>
