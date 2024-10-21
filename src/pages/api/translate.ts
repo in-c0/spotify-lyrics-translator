@@ -1,7 +1,6 @@
 // pages/api/translate.ts
 
 import type { NextApiRequest, NextApiResponse } from 'next'
-import translate from '@iamtraction/google-translate'
 
 interface TranslateRequestBody {
   text: string[] // Array of lyric lines
@@ -25,21 +24,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    // Perform translations line by line to maintain structure
-    const translatedTextPromises = text.map(line => 
-      translate(line, { from: sourceLang === 'auto' ? undefined : sourceLang, to: targetLang })
-        .then(result => result.text)
-        .catch(error => {
-          console.error('Translation error for line:', line, error)
-          return '' // Return empty string or handle as needed
-        })
-    )
+    const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY
+    if (!apiKey) {
+      throw new Error('Google Translate API key is not configured.')
+    }
 
-    const translatedText = await Promise.all(translatedTextPromises)
+    // Construct the request URL with the API key as a query parameter
+    const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`
+
+    // Prepare the request payload
+    const payload: any = {
+      q: text,
+      target: targetLang,
+      format: 'text',
+    }
+
+    if (sourceLang !== 'auto') {
+      payload.source = sourceLang
+    }
+
+    // Make the API request
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(`Google Translate API error: ${errorData.error.message || response.statusText}`)
+    }
+
+    const data = await response.json()
+    const translatedText: string[] = data.data.translations.map((t: any) => t.translatedText)
 
     res.status(200).json({ translatedText } as TranslateResponse)
   } catch (error: any) {
     console.error('Translation API error:', error)
-    res.status(500).json({ error: 'Internal Server Error during translation.' })
+    res.status(500).json({ error: error.message || 'Internal Server Error during translation.' })
   }
 }
