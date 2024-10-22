@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import LyricsPreview from './LyricsPreview'
+import "tailwindcss/tailwind.css";
 
 interface SettingsSheetProps {
   isSettingsOpen: boolean
@@ -88,7 +89,7 @@ export default function SettingsSheet({
                   id="japaneseRubyText"
                   checked={rubyText}
                   onCheckedChange={setRubyText}
-                  className="bg-zinc-600 data-[state=checked]:bg-green-500"
+                className="bg-zinc-600 data-[state=checked]:bg-green-500 w-11 h-6 rounded-full"
                 />
               </div>
               <div className="space-y-2">
