@@ -1,32 +1,34 @@
 // components/LanguageSettings.tsx
 
 import React from 'react'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetTrigger } from '@/components/ui/sheet'
+import { Button } from '@/components/ui/button'
+import { Settings } from 'lucide-react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
 interface LanguageSettingsProps {
   fromLanguage: string
-  toLanguage: string
-  setFromLanguage: React.Dispatch<React.SetStateAction<string>>
-  setToLanguage: React.Dispatch<React.SetStateAction<string>>
   rubyText: boolean
-  setRubyText: React.Dispatch<React.SetStateAction<boolean>>
+  setRubyText: (value: boolean) => void
   hangulSystem: string
-  setHangulSystem: React.Dispatch<React.SetStateAction<string>>
+  setHangulSystem: (value: string) => void
   japaneseTarget: string
-  setJapaneseTarget: React.Dispatch<React.SetStateAction<string>>
+  setJapaneseTarget: (value: string) => void
   japaneseMode: string
-  setJapaneseMode: React.Dispatch<React.SetStateAction<string>>
+  setJapaneseMode: (value: string) => void
   romajiSystem: string
-  setRomajiSystem: React.Dispatch<React.SetStateAction<string>>
+  setRomajiSystem: (value: string) => void
   okuriganaDelimiter: string
-  setOkuriganaDelimiter: React.Dispatch<React.SetStateAction<string>>
-  detectedLanguage: string // New prop
+  setOkuriganaDelimiter: (value: string) => void
+  isSettingsOpen: boolean
+  setIsSettingsOpen: (value: boolean) => void
 }
 
-const LanguageSettings: React.FC<LanguageSettingsProps> = ({
+export default function LanguageSettings({
   fromLanguage,
-  toLanguage,
-  setFromLanguage,
-  setToLanguage,
   rubyText,
   setRubyText,
   hangulSystem,
@@ -39,150 +41,78 @@ const LanguageSettings: React.FC<LanguageSettingsProps> = ({
   setRomajiSystem,
   okuriganaDelimiter,
   setOkuriganaDelimiter,
-  detectedLanguage, // New prop
-}) => {
-  // Function to get display name for "Auto" based on detectedLanguage
-  const getAutoDisplay = () => {
-    if (detectedLanguage === 'Japanese') {
-      return 'Auto (Japanese)'
-    } else if (detectedLanguage === 'Korean') {
-      return 'Auto (Korean)'
-    } else {
-      return 'Auto'
-    }
-  }
-
+  isSettingsOpen,
+  setIsSettingsOpen,
+}: LanguageSettingsProps) {
   return (
-    <div className="flex flex-col space-y-4">
-      {/* From Language Selection */}
-      <div className="flex items-center">
-        <label htmlFor="fromLanguage" className="mr-2 text-sm text-zinc-400">From:</label>
-        <select
-          id="fromLanguage"
-          value={fromLanguage}
-          onChange={(e) => setFromLanguage(e.target.value)}
-          className="bg-zinc-700 text-white rounded px-2 py-1"
-        >
-          <option value="auto">{getAutoDisplay()}</option>
-          <option value="ja">Japanese</option>
-          <option value="ko">Korean</option>
-          {/* Add more language options as needed */}
-        </select>
-      </div>
-    
-      {/* To Language Selection */}
-      <div className="flex items-center">
-        <label htmlFor="toLanguage" className="mr-2 text-sm text-zinc-400">To:</label>
-        <select
-          id="toLanguage"
-          value={toLanguage}
-          onChange={(e) => setToLanguage(e.target.value)}
-          className="bg-zinc-700 text-white rounded px-2 py-1"
-        >
-          <option value="en">English</option>
-          <option value="es">Spanish</option>
-          {/* Add more target language options as needed */}
-        </select>
-      </div>
-    
-      {/* Ruby Text Toggle */}
-      <div className="flex items-center">
-        <label htmlFor="rubyText" className="mr-2 text-sm text-zinc-400">Ruby Text:</label>
-        <input
-          id="rubyText"
-          type="checkbox"
-          checked={rubyText}
-          onChange={(e) => setRubyText(e.target.checked)}
-          className="h-4 w-4 text-green-600 border-zinc-500 rounded"
-        />
-      </div>
-    
-      {/* Hangul System Selection */}
-      {fromLanguage === 'ko' && (
-        <div className="flex items-center">
-          <label htmlFor="hangulSystem" className="mr-2 text-sm text-zinc-400">Hangul System:</label>
-          <select
-            id="hangulSystem"
-            value={hangulSystem}
-            onChange={(e) => setHangulSystem(e.target.value)}
-            className="bg-zinc-700 text-white rounded px-2 py-1"
-          >
-            <option value="Revised">Revised</option>
-            <option value="McCune-Reischauer">McCune-Reischauer</option>
-            {/* Add more Hangul systems if needed */}
-          </select>
+    <Sheet open={isSettingsOpen} onOpenChange={setIsSettingsOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <Settings className="h-5 w-5" />
+          <span className="sr-only">Open settings</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent className="bg-gray-800 text-white overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="text-white">Language Settings</SheetTitle>
+          <SheetDescription className="text-gray-400">
+            Customize your translation and romanization settings.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-6 space-y-4">
+          <Tabs defaultValue={fromLanguage} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="ja">Japanese</TabsTrigger>
+              <TabsTrigger value="ko">Korean</TabsTrigger>
+              <TabsTrigger value="zh">Chinese</TabsTrigger>
+            </TabsList>
+            <TabsContent value="ja" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="japaneseRubyText" className="text-white">Ruby Text</Label>
+                <Switch
+                  id="japaneseRubyText"
+                  checked={rubyText}
+                  onCheckedChange={setRubyText}
+                />
+              </div>
+              {/* Additional Japanese settings */}
+              <div className="space-y-2">
+                <Label className="text-white">Japanese Target</Label>
+                <RadioGroup value={japaneseTarget} onValueChange={setJapaneseTarget} className="space-y-1">
+                  {['Romaji', 'Hiragana', 'Katakana'].map((value) => (
+                    <div key={value} className="flex items-center space-x-2">
+                      <RadioGroupItem value={value} id={value.toLowerCase()} className="border-2 border-gray-600 text-white focus:border-green-500" />
+                      <Label htmlFor={value.toLowerCase()} className="text-white">{value}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              </div>
+            </TabsContent>
+            <TabsContent value="ko" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="koreanRubyText" className="text-white">Ruby Text</Label>
+                <Switch
+                  id="koreanRubyText"
+                  checked={rubyText}
+                  onCheckedChange={setRubyText}
+                />
+              </div>
+              {/* Additional Korean settings */}
+            </TabsContent>
+            <TabsContent value="zh" className="mt-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="chineseRubyText" className="text-white">Ruby Text (Pinyin)</Label>
+                <Switch
+                  id="chineseRubyText"
+                  checked={rubyText}
+                  onCheckedChange={setRubyText}
+                />
+              </div>
+              {/* Additional Chinese settings */}
+            </TabsContent>
+          </Tabs>
         </div>
-      )}
-    
-      {/* Japanese Target Selection */}
-      {fromLanguage === 'ja' && (
-        <div className="flex items-center">
-          <label htmlFor="japaneseTarget" className="mr-2 text-sm text-zinc-400">Japanese Target:</label>
-          <select
-            id="japaneseTarget"
-            value={japaneseTarget}
-            onChange={(e) => setJapaneseTarget(e.target.value)}
-            className="bg-zinc-700 text-white rounded px-2 py-1"
-          >
-            <option value="Romaji">Romaji</option>
-            <option value="Hepburn">Hepburn</option>
-            {/* Add more options if needed */}
-          </select>
-        </div>
-      )}
-    
-      {/* Japanese Mode Selection */}
-      {fromLanguage === 'ja' && (
-        <div className="flex items-center">
-          <label htmlFor="japaneseMode" className="mr-2 text-sm text-zinc-400">Japanese Mode:</label>
-          <select
-            id="japaneseMode"
-            value={japaneseMode}
-            onChange={(e) => setJapaneseMode(e.target.value)}
-            className="bg-zinc-700 text-white rounded px-2 py-1"
-          >
-            <option value="Normal">Normal</option>
-            <option value="Advanced">Advanced</option>
-            {/* Add more modes if needed */}
-          </select>
-        </div>
-      )}
-    
-      {/* Romaji System Selection */}
-      {fromLanguage === 'ja' && japaneseTarget === 'Romaji' && (
-        <div className="flex items-center">
-          <label htmlFor="romajiSystem" className="mr-2 text-sm text-zinc-400">Romaji System:</label>
-          <select
-            id="romajiSystem"
-            value={romajiSystem}
-            onChange={(e) => setRomajiSystem(e.target.value)}
-            className="bg-zinc-700 text-white rounded px-2 py-1"
-          >
-            <option value="Hepburn">Hepburn</option>
-            <option value="Kunrei">Kunrei</option>
-            {/* Add more systems if needed */}
-          </select>
-        </div>
-      )}
-    
-      {/* Okurigana Delimiter Selection */}
-      {fromLanguage === 'ja' && (
-        <div className="flex items-center">
-          <label htmlFor="okuriganaDelimiter" className="mr-2 text-sm text-zinc-400">Okurigana Delimiter:</label>
-          <select
-            id="okuriganaDelimiter"
-            value={okuriganaDelimiter}
-            onChange={(e) => setOkuriganaDelimiter(e.target.value)}
-            className="bg-zinc-700 text-white rounded px-2 py-1"
-          >
-            <option value="( )">( )</option>
-            <option value="[ ]">[ ]</option>
-            <option value="{ }">{'{}'}</option>
-            {/* Add more delimiters if needed */}
-          </select>
-        </div>
-      )}
-    </div>
+      </SheetContent>
+    </Sheet>
   )
 }
-export default LanguageSettings

@@ -1,9 +1,9 @@
-// components/EnhancedLyricsTranslator.tsx
+// src/components/EnhancedLyricsTranslator.tsx
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX } from 'lucide-react'
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Settings } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, Loader2 } from "lucide-react"
 import {
@@ -15,7 +15,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import LanguageSettings from './LanguageSettings' // Ensure correct import path
+import LanguageSelector from './LanguageSelector'
+import SettingsSheet from './SettingsSheet'
+import LyricsPreview from './LyricsPreview'
 
 // Import Romanization Libraries
 import { toRomaji } from 'wanakana'
@@ -58,6 +60,27 @@ interface TranslateResponse {
   translations: Translation[]
 }
 
+interface Language {
+  code: string
+  name: string
+}
+
+// **Define the languageCodeToName function here**
+const languageCodeToName = (code: string): string => {
+  const languageMap: { [key: string]: string } = {
+    'auto': 'Auto',
+    'ja': 'Japanese',
+    'ko': 'Korean',
+    'zh': 'Chinese',
+    'en': 'English',
+    'es': 'Spanish',
+    // Add more languages as needed
+  }
+
+  return languageMap[code] || code
+}
+
+
 export default function EnhancedLyricsTranslator({ refreshToken, onLogout, accessToken }: EnhancedLyricsTranslatorProps) {
   const [lyrics, setLyrics] = useState<Lyric[]>([])
   const [isRomanizationEnabled, setIsRomanizationEnabled] = useState<boolean>(false)
@@ -83,6 +106,66 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [okuriganaDelimiter, setOkuriganaDelimiter] = useState<string>('( )')
 
   const [detectedLanguage, setDetectedLanguage] = useState<string>('auto') // New state for detected language
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false) // State for SettingsSheet
+
+  const languages: Language[] = [
+    { code: 'auto', name: 'Auto' },
+    { code: 'ja', name: 'Japanese' },
+    { code: 'ko', name: 'Korean' },
+    { code: 'zh', name: 'Chinese' },
+    { code: 'en', name: 'English' },
+    { code: 'es', name: 'Spanish' },
+    // Add more languages as needed
+  ]
+  // Function to apply Romanization
+  const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[], lang: string) => {
+    setIsRomanizing(true)
+    if (lang === 'ja') {
+      try {
+        const romanizedLyrics = lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
+        }))
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Japanese Romanization:', error)
+        setError('Failed to Romanize Japanese lyrics.')
+      }
+    } else if (lang === 'ko') {
+      try {
+        const romanizedLyrics = lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: typeof line.original === 'string' ? romanize(line.original, { system: hangulSystem }) : '',
+        }))
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Korean Romanization:', error)
+        setError('Failed to Romanize Korean lyrics.')
+      }
+    } else {
+      // Unsupported language for Romanization
+      setLyrics(lyricsToRomanize.map(line => ({
+        ...line,
+        romanized: '',
+      })))
+    }
+    setIsRomanizing(false)
+  }, [hangulSystem])
+  const resetJapaneseSettings = () => {
+    setJapaneseTarget('Romaji')
+    setJapaneseMode('Normal')
+    setRomajiSystem('Hepburn')
+    setOkuriganaDelimiter('( )')
+  }
+  
+  const resetKoreanSettings = () => {
+    setHangulSystem('Revised')
+  }
+  
+  const resetChineseSettings = () => {
+    setRubyText(false)
+  }
 
   // Function to refresh access token
   const onTokenRefresh = useCallback(async () => {
@@ -119,56 +202,6 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     [accessToken, onTokenRefresh]
   )
 
-  // Helper function to convert language codes to names
-  const languageCodeToName = (code: string): string => {
-    const languageMap: { [key: string]: string } = {
-      'auto': 'Auto',
-      'ja': 'Japanese',
-      'ko': 'Korean',
-      'en': 'English',
-      'es': 'Spanish',
-      // Add more languages as needed
-    }
-
-    return languageMap[code] || code
-  }
-
-    // Function to apply Romanization
-    const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[], lang: string) => {
-      setIsRomanizing(true)
-      if (lang === 'ja') {
-        try {
-          const romanizedLyrics = lyricsToRomanize.map(line => ({
-            ...line,
-            romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
-          }))
-          setLyrics(romanizedLyrics)
-        } catch (error: any) {
-          console.error('Error during Japanese Romanization:', error)
-          setError('Failed to Romanize Japanese lyrics.')
-        }
-      } else if (lang === 'ko') {
-        try {
-          const romanizedLyrics = lyricsToRomanize.map(line => ({
-            ...line,
-            romanized: typeof line.original === 'string' ? romanize(line.original) : '',
-          }))
-          setLyrics(romanizedLyrics)
-        } catch (error: any) {
-          console.error('Error during Korean Romanization:', error)
-          setError('Failed to Romanize Korean lyrics.')
-        }
-      } else {
-        // Unsupported language for Romanization
-        setLyrics(lyricsToRomanize.map(line => ({
-          ...line,
-          romanized: '',
-        })))
-      }
-      setIsRomanizing(false)
-    }, [])
-
-    
   // Translate lyrics using the backend API
   const translateLyrics = useCallback(async (lyricsToTranslate: Lyric[]) => {
     if (!toLanguage) return
@@ -544,81 +577,92 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
             <h1 className="text-2xl font-bold">Spotify Lyrics Translator</h1>
             <div className="flex items-center space-x-2">
               {accessToken && userProfile ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={userProfile.image} alt={userProfile.name} />
-                        <AvatarFallback>{userProfile.name.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <DropdownMenuLabel className="font-normal">
-                      <div className="flex flex-col space-y-1">
-                        <p className="text-sm font-medium leading-none">{userProfile.name}</p>
-                        <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>
-                      </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => window.open('https://www.spotify.com/account/overview/', '_blank')}>
-                      Spotify Account
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={onLogout}>
-                      Log out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <>
+                  {/* Settings Button */}
+                  <SettingsSheet
+                    isSettingsOpen={isSettingsOpen}
+                    setIsSettingsOpen={setIsSettingsOpen}
+                    fromLanguage={fromLanguage}
+                    rubyText={rubyText}
+                    setRubyText={setRubyText}
+                    hangulSystem={hangulSystem}
+                    setHangulSystem={setHangulSystem}
+                    japaneseTarget={japaneseTarget}
+                    setJapaneseTarget={setJapaneseTarget}
+                    japaneseMode={japaneseMode}
+                    setJapaneseMode={setJapaneseMode}
+                    romajiSystem={romajiSystem}
+                    setRomajiSystem={setRomajiSystem}
+                    okuriganaDelimiter={okuriganaDelimiter}
+                    setOkuriganaDelimiter={setOkuriganaDelimiter}
+                  />
+                  {/* User Profile Dropdown */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={userProfile.image} alt={userProfile.name} />
+                          <AvatarFallback>{userProfile.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-56" align="end" forceMount>
+                      <DropdownMenuLabel className="font-normal">
+                        <div className="flex flex-col space-y-1">
+                          <p className="text-sm font-medium leading-none">{userProfile.name}</p>
+                          <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>
+                        </div>
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => window.open('https://www.spotify.com/account/overview/', '_blank')}>
+                        Spotify Account
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={onLogout}>
+                        Log out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
               ) : (
                 <Button onClick={() => window.location.href = '/login'}>Log in</Button>
               )}
             </div>
           </div>
 
-          {/* Language Settings and Romanization Toggle */}
-          <div className="flex items-center justify-between mb-4">
-            <LanguageSettings
-              fromLanguage={fromLanguage}
-              toLanguage={toLanguage}
-              setFromLanguage={setFromLanguage}
-              setToLanguage={setToLanguage}
-              rubyText={rubyText}
-              setRubyText={setRubyText}
-              hangulSystem={hangulSystem}
-              setHangulSystem={setHangulSystem}
-              japaneseTarget={japaneseTarget}
-              setJapaneseTarget={setJapaneseTarget}
-              japaneseMode={japaneseMode}
-              setJapaneseMode={setJapaneseMode}
-              romajiSystem={romajiSystem}
-              setRomajiSystem={setRomajiSystem}
-              okuriganaDelimiter={okuriganaDelimiter}
-              setOkuriganaDelimiter={setOkuriganaDelimiter}
-              detectedLanguage={detectedLanguage}
-            />
-            {/* Romanization Toggle */}
-            <div className="flex items-center">
-              <span className="mr-2 text-sm text-zinc-400">Romanization</span>
-              <Switch
-                checked={isRomanizationEnabled}
-                onCheckedChange={(checked) => {
-                  setIsRomanizationEnabled(checked)
-                  if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
-                    applyRomanization(lyrics, detectedLanguage)
-                  } else {
-                    // Remove Romanized text when toggle is off
-                    const clearedLyrics = lyrics.map(line => ({
-                      ...line,
-                      romanized: '',
-                    }))
-                    setLyrics(clearedLyrics)
-                  }
-                }}
-                aria-label="Toggle Romanization"
-              />
-            </div>
-          </div>
+          {/* Language Selector and Romanization Toggle */}
+          <LanguageSelector
+            fromLanguage={fromLanguage}
+            toLanguage={toLanguage}
+            setFromLanguage={setFromLanguage}
+            setToLanguage={setToLanguage}
+            languages={languages}
+            resetJapaneseSettings={resetJapaneseSettings}
+            resetKoreanSettings={resetKoreanSettings}
+            resetChineseSettings={resetChineseSettings}
+          />
 
+          {/* Romanization Toggle */}
+          <div className="flex items-center mb-4">
+            <span className="mr-2 text-sm text-zinc-400">Romanization</span>
+            <Switch
+              checked={isRomanizationEnabled}
+              onCheckedChange={(checked) => {
+                setIsRomanizationEnabled(checked)
+                if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
+                  applyRomanization(lyrics, detectedLanguage)
+                } else {
+                  // Remove Romanized text when toggle is off
+                  const clearedLyrics = lyrics.map(line => ({
+                    ...line,
+                    romanized: '',
+                  }))
+                  setLyrics(clearedLyrics)
+                }
+              }}
+              aria-label="Toggle Romanization"
+            />
+          </div>
+          
           {/* Loading Indicator for Romanization */}
           {isRomanizing && (
             <div className="flex items-center mb-4">
