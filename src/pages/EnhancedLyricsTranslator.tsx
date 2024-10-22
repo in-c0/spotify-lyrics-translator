@@ -17,8 +17,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import LanguageSettings from './LanguageSettings' // Ensure correct import path
 
-// Import Romanization Libraries
-import { toRomaji } from 'wanakana'
+// Import Kuroshiro and Kuromoji Analyzer
+import Kuroshiro from 'kuroshiro'
+import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
+
+// Import Romanization Libraries for Korean
 import { romanize } from '@romanize/korean'
 
 interface Lyric {
@@ -84,6 +87,66 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
 
   const [detectedLanguage, setDetectedLanguage] = useState<string>('auto') // New state for detected language
 
+  // Initialize Kuroshiro
+  const kuroshiroRef = useRef<Kuroshiro | null>(null)
+
+  useEffect(() => {
+    const initializeKuroshiro = async () => {
+      kuroshiroRef.current = new Kuroshiro()
+      await kuroshiroRef.current.init(new KuromojiAnalyzer({
+        dicPath: 'http://localhost:3000/public/kuromoji/dict/' // or ideally just /kuromoji/dict/
+      }))
+      console.log('Kuroshiro initialized successfully.')
+    }
+
+    // Initialize only on the client side
+    if (typeof window !== 'undefined') {
+      initializeKuroshiro()
+    }
+  }, [])
+
+  // Function to apply Romanization
+  const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[], lang: string) => {
+    setIsRomanizing(true)
+    if (lang === 'ja') {
+      try {
+        if (!kuroshiroRef.current) {
+          throw new Error('Kuroshiro is not initialized.')
+        }
+        const romanizedLyrics = await Promise.all(
+          lyricsToRomanize.map(async (line) => ({
+            ...line,
+            romanized: typeof line.original === 'string' 
+              ? await kuroshiroRef.current!.convert(line.original, { to: 'romaji', mode: 'spaced' }) 
+              : '',
+          }))
+        )
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Japanese Romanization:', error)
+        setError('Failed to Romanize Japanese lyrics.')
+      }
+    } else if (lang === 'ko') {
+      try {
+        const romanizedLyrics = lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: typeof line.original === 'string' ? romanize(line.original) : '',
+        }))
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Korean Romanization:', error)
+        setError('Failed to Romanize Korean lyrics.')
+      }
+    } else {
+      // Unsupported language for Romanization
+      setLyrics(lyricsToRomanize.map(line => ({
+        ...line,
+        romanized: '',
+      })))
+    }
+    setIsRomanizing(false)
+  }, [])
+
   // Function to refresh access token
   const onTokenRefresh = useCallback(async () => {
     await refreshToken()
@@ -120,7 +183,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   )
 
   // Helper function to convert language codes to names
-  const languageCodeToName = (code: string): string => {
+  const languageCodeToName = (code: string, detectedLang?: string): string => {
     const languageMap: { [key: string]: string } = {
       'auto': 'Auto',
       'ja': 'Japanese',
@@ -130,45 +193,13 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
       // Add more languages as needed
     }
 
+    if (code === 'auto' && detectedLang && detectedLang !== 'auto') {
+      return `Auto (${languageMap[detectedLang] || detectedLang})`
+    }
+
     return languageMap[code] || code
   }
 
-    // Function to apply Romanization
-    const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[], lang: string) => {
-      setIsRomanizing(true)
-      if (lang === 'ja') {
-        try {
-          const romanizedLyrics = lyricsToRomanize.map(line => ({
-            ...line,
-            romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
-          }))
-          setLyrics(romanizedLyrics)
-        } catch (error: any) {
-          console.error('Error during Japanese Romanization:', error)
-          setError('Failed to Romanize Japanese lyrics.')
-        }
-      } else if (lang === 'ko') {
-        try {
-          const romanizedLyrics = lyricsToRomanize.map(line => ({
-            ...line,
-            romanized: typeof line.original === 'string' ? romanize(line.original) : '',
-          }))
-          setLyrics(romanizedLyrics)
-        } catch (error: any) {
-          console.error('Error during Korean Romanization:', error)
-          setError('Failed to Romanize Korean lyrics.')
-        }
-      } else {
-        // Unsupported language for Romanization
-        setLyrics(lyricsToRomanize.map(line => ({
-          ...line,
-          romanized: '',
-        })))
-      }
-      setIsRomanizing(false)
-    }, [])
-
-    
   // Translate lyrics using the backend API
   const translateLyrics = useCallback(async (lyricsToTranslate: Lyric[]) => {
     if (!toLanguage) return
@@ -210,6 +241,9 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
 
       // Apply Romanization if enabled and detected language is suitable
       if (isRomanizationEnabled && (firstDetectedLang === 'ja' || firstDetectedLang === 'ko')) {
+        if (firstDetectedLang === 'ja' && !kuroshiroRef.current) {
+          throw new Error('Kuroshiro is not initialized.')
+        }
         applyRomanization(updatedLyrics, firstDetectedLang)
       }
     } catch (error: any) {
@@ -594,6 +628,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
               setRomajiSystem={setRomajiSystem}
               okuriganaDelimiter={okuriganaDelimiter}
               setOkuriganaDelimiter={setOkuriganaDelimiter}
+              detectedLanguage={detectedLanguage}
             />
             {/* Romanization Toggle */}
             <div className="flex items-center">
@@ -656,9 +691,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
               <>
                 {/* From Language Label */}
                 <div className="mb-2 text-sm text-zinc-400">
-                  {fromLanguage === 'auto'
-                    ? `From: Auto (${languageCodeToName(detectedLanguage)})`
-                    : `From: ${languageCodeToName(fromLanguage)}`}
+                  {languageCodeToName(fromLanguage, detectedLanguage)}
                 </div>
                 {lyrics.map((line, index) => (
                   <div
