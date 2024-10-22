@@ -4,12 +4,17 @@ import type { NextApiRequest, NextApiResponse } from 'next'
 
 interface TranslateRequestBody {
   text: string[] // Array of lyric lines
-  sourceLang: string // e.g., 'ja' for Japanese, 'ko' for Korean
+  sourceLang: string // e.g., 'ja' for Japanese, 'ko' for Korean, 'auto' for auto-detect
   targetLang: string // e.g., 'en' for English
 }
 
+interface Translation {
+  translatedText: string
+  detectedSourceLanguage: string
+}
+
 interface TranslateResponse {
-  translatedText: string[]
+  translations: Translation[]
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -37,6 +42,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       q: text,
       target: targetLang,
       format: 'text',
+      // You can set model=base or model=nmt if desired
     }
 
     if (sourceLang !== 'auto') {
@@ -58,9 +64,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const data = await response.json()
-    const translatedText: string[] = data.data.translations.map((t: any) => t.translatedText)
 
-    res.status(200).json({ translatedText } as TranslateResponse)
+    // Extract translations and detected languages
+    const translations: Translation[] = data.data.translations.map((t: any) => ({
+      translatedText: t.translatedText,
+      detectedSourceLanguage: t.detectedSourceLanguage || sourceLang, // If sourceLang was 'auto', get detected language
+    }))
+
+    res.status(200).json({ translations } as TranslateResponse)
   } catch (error: any) {
     console.error('Translation API error:', error)
     res.status(500).json({ error: error.message || 'Internal Server Error during translation.' })

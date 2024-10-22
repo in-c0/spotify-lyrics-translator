@@ -19,6 +19,7 @@ interface LanguageSettingsProps {
   setRomajiSystem: React.Dispatch<React.SetStateAction<string>>
   okuriganaDelimiter: string
   setOkuriganaDelimiter: React.Dispatch<React.SetStateAction<string>>
+  detectedLanguage: string // New prop
 }
 
 const LanguageSettings: React.FC<LanguageSettingsProps> = ({
@@ -38,7 +39,19 @@ const LanguageSettings: React.FC<LanguageSettingsProps> = ({
   setRomajiSystem,
   okuriganaDelimiter,
   setOkuriganaDelimiter,
+  detectedLanguage, // New prop
 }) => {
+  // Function to get display name for "Auto" based on detectedLanguage
+  const getAutoDisplay = () => {
+    if (detectedLanguage === 'Japanese') {
+      return 'Auto (Japanese)'
+    } else if (detectedLanguage === 'Korean') {
+      return 'Auto (Korean)'
+    } else {
+      return 'Auto'
+    }
+  }
+
   return (
     <div className="flex flex-col space-y-4">
       {/* From Language Selection */}
@@ -50,7 +63,7 @@ const LanguageSettings: React.FC<LanguageSettingsProps> = ({
           onChange={(e) => setFromLanguage(e.target.value)}
           className="bg-zinc-700 text-white rounded px-2 py-1"
         >
-          <option value="auto">Auto</option>
+          <option value="auto">{getAutoDisplay()}</option>
           <option value="ja">Japanese</option>
           <option value="ko">Korean</option>
           {/* Add more language options as needed */}

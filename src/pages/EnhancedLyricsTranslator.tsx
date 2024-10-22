@@ -21,9 +21,6 @@ import LanguageSettings from './LanguageSettings' // Ensure correct import path
 import { toRomaji } from 'wanakana'
 import { romanize } from '@romanize/korean'
 
-// Optional: If you have a separate LyricsLine component, import it here
-// import LyricsLine from './LyricsLine'
-
 interface Lyric {
   original: string
   translated: string
@@ -52,6 +49,15 @@ interface EnhancedLyricsTranslatorProps {
   onLogout: () => void
 }
 
+interface Translation {
+  translatedText: string
+  detectedSourceLanguage: string
+}
+
+interface TranslateResponse {
+  translations: Translation[]
+}
+
 export default function EnhancedLyricsTranslator({ refreshToken, onLogout, accessToken }: EnhancedLyricsTranslatorProps) {
   const [lyrics, setLyrics] = useState<Lyric[]>([])
   const [isRomanizationEnabled, setIsRomanizationEnabled] = useState<boolean>(false)
@@ -76,50 +82,12 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [romajiSystem, setRomajiSystem] = useState<string>('Hepburn')
   const [okuriganaDelimiter, setOkuriganaDelimiter] = useState<string>('( )')
 
+  const [detectedLanguage, setDetectedLanguage] = useState<string>('auto') // New state for detected language
+
   // Function to refresh access token
   const onTokenRefresh = useCallback(async () => {
     await refreshToken()
   }, [refreshToken])
-
-  // Function to apply Romanization
-  const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[]) => {
-    console.log('Starting Romanization...')
-    setIsRomanizing(true)
-    if (fromLanguage === 'ja') {
-      try {
-        const romanizedLyrics = lyricsToRomanize.map(line => ({
-          ...line,
-          romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
-        }))
-        console.log('Romanized Lyrics:', romanizedLyrics)
-        setLyrics(romanizedLyrics)
-      } catch (error: any) {
-        console.error('Error during Japanese Romanization:', error)
-        setError('Failed to Romanize Japanese lyrics.')
-      }
-    } else if (fromLanguage === 'ko') {
-      try {
-        const romanizedLyrics = lyricsToRomanize.map(line => ({
-          ...line,
-          romanized: typeof line.original === 'string' ? romanize(line.original) : '',
-        }))
-        console.log('Romanized Lyrics:', romanizedLyrics)
-        setLyrics(romanizedLyrics)
-      } catch (error: any) {
-        console.error('Error during Korean Romanization:', error)
-        setError('Failed to Romanize Korean lyrics.')
-      }
-    } else {
-      // Unsupported language for Romanization
-      console.log('Unsupported language for Romanization. Clearing Romanized text.')
-      setLyrics(lyricsToRomanize.map(line => ({
-        ...line,
-        romanized: '',
-      })))
-    }
-    setIsRomanizing(false)
-    console.log('Romanization completed.')
-  }, [fromLanguage, romanize])
 
   // Fetch with token, retry once on 401
   const fetchWithToken = useCallback(
@@ -151,6 +119,56 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     [accessToken, onTokenRefresh]
   )
 
+  // Helper function to convert language codes to names
+  const languageCodeToName = (code: string): string => {
+    const languageMap: { [key: string]: string } = {
+      'auto': 'Auto',
+      'ja': 'Japanese',
+      'ko': 'Korean',
+      'en': 'English',
+      'es': 'Spanish',
+      // Add more languages as needed
+    }
+
+    return languageMap[code] || code
+  }
+
+    // Function to apply Romanization
+    const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[], lang: string) => {
+      setIsRomanizing(true)
+      if (lang === 'ja') {
+        try {
+          const romanizedLyrics = lyricsToRomanize.map(line => ({
+            ...line,
+            romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
+          }))
+          setLyrics(romanizedLyrics)
+        } catch (error: any) {
+          console.error('Error during Japanese Romanization:', error)
+          setError('Failed to Romanize Japanese lyrics.')
+        }
+      } else if (lang === 'ko') {
+        try {
+          const romanizedLyrics = lyricsToRomanize.map(line => ({
+            ...line,
+            romanized: typeof line.original === 'string' ? romanize(line.original) : '',
+          }))
+          setLyrics(romanizedLyrics)
+        } catch (error: any) {
+          console.error('Error during Korean Romanization:', error)
+          setError('Failed to Romanize Korean lyrics.')
+        }
+      } else {
+        // Unsupported language for Romanization
+        setLyrics(lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: '',
+        })))
+      }
+      setIsRomanizing(false)
+    }, [])
+
+    
   // Translate lyrics using the backend API
   const translateLyrics = useCallback(async (lyricsToTranslate: Lyric[]) => {
     if (!toLanguage) return
@@ -163,7 +181,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
         },
         body: JSON.stringify({
           text: lyricsToTranslate.map(line => line.original),
-          sourceLang: fromLanguage === 'auto' ? 'auto' : fromLanguage.toLowerCase(),
+          sourceLang: fromLanguage, // Can be 'auto', 'ja', 'ko', etc.
           targetLang: toLanguage.toLowerCase(),
         }),
       })
@@ -173,8 +191,14 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
         throw new Error(errorData.error || 'Failed to translate lyrics.')
       }
 
-      const data = await response.json()
-      const translatedText: string[] = data.translatedText
+      const data = await response.json() as TranslateResponse
+
+      // Assuming all lines are in the same language
+      const firstDetectedLang = data.translations[0]?.detectedSourceLanguage || 'auto'
+
+      setDetectedLanguage(firstDetectedLang)
+
+      const translatedText: string[] = data.translations.map(t => t.translatedText)
 
       // Map translated text back to lyrics
       const updatedLyrics: Lyric[] = lyricsToTranslate.map((line, index) => ({
@@ -184,9 +208,9 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
 
       setLyrics(updatedLyrics)
 
-      // Apply Romanization if enabled
-      if (isRomanizationEnabled) {
-        applyRomanization(updatedLyrics)
+      // Apply Romanization if enabled and detected language is suitable
+      if (isRomanizationEnabled && (firstDetectedLang === 'ja' || firstDetectedLang === 'ko')) {
+        applyRomanization(updatedLyrics, firstDetectedLang)
       }
     } catch (error: any) {
       console.error('Translation error:', error)
@@ -577,13 +601,11 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
               <Switch
                 checked={isRomanizationEnabled}
                 onCheckedChange={(checked) => {
-                  console.log('Romanization toggled:', checked)
                   setIsRomanizationEnabled(checked)
-                  if (checked) {
-                    console.log('Applying Romanization...')
-                    applyRomanization(lyrics)
+                  if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
+                    applyRomanization(lyrics, detectedLanguage)
                   } else {
-                    console.log('Removing Romanization...')
+                    // Remove Romanized text when toggle is off
                     const clearedLyrics = lyrics.map(line => ({
                       ...line,
                       romanized: '',
@@ -631,24 +653,32 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
           {/* Lyrics Section */}
           <div className="space-y-4 mb-6 h-64 overflow-y-auto overflow-x-hidden hide-scrollbar pr-4">
             {lyrics.length > 0 ? (
-              lyrics.map((line, index) => (
-                <div
-                  key={index}
-                  className={`transition-all duration-300 ${index === currentLineIndex ? 'scale-105 text-green-400' : 'scale-100 text-white'}`}
-                >
-                  <div className="pl-2 -ml-2">
-                    <p className="text-lg font-semibold">{line.original}</p>
-                    {/* Display Romanized lyrics if enabled */}
-                    {isRomanizationEnabled && line.romanized && (
-                      <p className="text-sm text-zinc-300 italic">{line.romanized}</p>
-                    )}
-                    {/* Display translated lyrics if available */}
-                    {line.translated && (
-                      <p className="text-sm text-zinc-300">{line.translated}</p>
-                    )}
-                  </div>
+              <>
+                {/* From Language Label */}
+                <div className="mb-2 text-sm text-zinc-400">
+                  {fromLanguage === 'auto'
+                    ? `From: Auto (${languageCodeToName(detectedLanguage)})`
+                    : `From: ${languageCodeToName(fromLanguage)}`}
                 </div>
-              ))
+                {lyrics.map((line, index) => (
+                  <div
+                    key={index}
+                    className={`transition-all duration-300 ${index === currentLineIndex ? 'scale-105 text-green-400' : 'scale-100 text-white'}`}
+                  >
+                    <div className="pl-2 -ml-2">
+                      <p className="text-lg font-semibold">{line.original}</p>
+                      {/* Display Romanized lyrics if enabled */}
+                      {isRomanizationEnabled && line.romanized && (
+                        <p className="text-sm text-zinc-300 italic">{line.romanized}</p>
+                      )}
+                      {/* Display translated lyrics if available */}
+                      {line.translated && (
+                        <p className="text-sm text-zinc-300">{line.translated}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </>
             ) : (
               <p className="text-center text-zinc-400">Lyrics not available for this track.</p>
             )}
