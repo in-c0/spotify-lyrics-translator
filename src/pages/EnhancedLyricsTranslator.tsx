@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
-import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Settings } from 'lucide-react'
+import { Pause, Play, SkipBack, SkipForward, Volume2, VolumeX, Settings, Languages } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, Loader2 } from "lucide-react"
 import {
@@ -643,30 +643,6 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
             resetKoreanSettings={resetKoreanSettings}
             resetChineseSettings={resetChineseSettings}
           />
-
-           {/* Romanization Toggle */}
-           <div className="flex items-center justify-between mb-4">
-            <Label htmlFor="romanization" className="text-sm text-zinc-400">Romanization</Label>
-            <Switch
-              id="romanization"
-              checked={isRomanizationEnabled}
-              onCheckedChange={(checked) => {
-                setIsRomanizationEnabled(checked);
-                if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
-                  applyRomanization(lyrics, detectedLanguage);
-                } else {
-                  // Remove Romanized text when toggle is off
-                  const clearedLyrics = lyrics.map(line => ({
-                    ...line,
-                    romanized: '',
-                  }));
-                  setLyrics(clearedLyrics);
-                }
-              }}
-              className="bg-zinc-600 data-[state=checked]:bg-green-500"
-            />
-          </div>
-          
           {/* Loading Indicator for Romanization */}
           {isRomanizing && (
             <div className="flex items-center mb-4">
@@ -763,7 +739,29 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                 <SkipForward className="h-5 w-5" />
               </Button>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-4">
+              {/* Romanization Toggle */}
+              <div className="flex items-center space-x-2">
+                <Languages className="h-5 w-5 text-zinc-400" />
+                <Switch
+                  id="romanization"
+                  checked={isRomanizationEnabled}
+                  onCheckedChange={(checked) => {
+                    setIsRomanizationEnabled(checked);
+                    if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
+                      applyRomanization(lyrics, detectedLanguage);
+                    } else {
+                      // Remove Romanized text when toggle is off
+                      const clearedLyrics = lyrics.map(line => ({
+                        ...line,
+                        romanized: '',
+                      }));
+                      setLyrics(clearedLyrics);
+                    }
+                  }}
+                  className="bg-zinc-600 data-[state=checked]:bg-green-500"
+                />
+              </div>
               <Button variant="ghost" size="icon" onClick={toggleMute} className="hover:bg-zinc-700/50 transition-colors">
                 {isMuted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
               </Button>
