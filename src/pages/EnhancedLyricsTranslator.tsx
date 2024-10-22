@@ -594,6 +594,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
               setRomajiSystem={setRomajiSystem}
               okuriganaDelimiter={okuriganaDelimiter}
               setOkuriganaDelimiter={setOkuriganaDelimiter}
+              detectedLanguage={detectedLanguage}
             />
             {/* Romanization Toggle */}
             <div className="flex items-center">
