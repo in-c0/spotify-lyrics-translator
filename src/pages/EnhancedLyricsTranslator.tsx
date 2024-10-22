@@ -22,6 +22,7 @@ import LyricsPreview from './LyricsPreview'
 // Import Romanization Libraries
 import { toRomaji } from 'wanakana'
 import { romanize } from '@romanize/korean'
+import { Label } from '@/components/ui/label'
 
 interface Lyric {
   original: string
@@ -643,25 +644,26 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
             resetChineseSettings={resetChineseSettings}
           />
 
-          {/* Romanization Toggle */}
-          <div className="flex items-center mb-4">
-            <span className="mr-2 text-sm text-zinc-400">Romanization</span>
+           {/* Romanization Toggle */}
+           <div className="flex items-center justify-between mb-4">
+            <Label htmlFor="romanization" className="text-sm text-zinc-400">Romanization</Label>
             <Switch
+              id="romanization"
               checked={isRomanizationEnabled}
               onCheckedChange={(checked) => {
-                setIsRomanizationEnabled(checked)
+                setIsRomanizationEnabled(checked);
                 if (checked && (detectedLanguage === 'ja' || detectedLanguage === 'ko')) {
-                  applyRomanization(lyrics, detectedLanguage)
+                  applyRomanization(lyrics, detectedLanguage);
                 } else {
                   // Remove Romanized text when toggle is off
                   const clearedLyrics = lyrics.map(line => ({
                     ...line,
                     romanized: '',
-                  }))
-                  setLyrics(clearedLyrics)
+                  }));
+                  setLyrics(clearedLyrics);
                 }
               }}
-              aria-label="Toggle Romanization"
+              className="bg-zinc-600 data-[state=checked]:bg-green-500"
             />
           </div>
           
