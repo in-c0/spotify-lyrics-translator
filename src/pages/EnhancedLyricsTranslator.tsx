@@ -65,7 +65,6 @@ interface Language {
   name: string
 }
 
-// **Define the languageCodeToName function here**
 const languageCodeToName = (code: string): string => {
   const languageMap: { [key: string]: string } = {
     'auto': 'Auto',
@@ -110,12 +109,15 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false) // State for SettingsSheet
 
   const languages: Language[] = [
-    { code: 'auto', name: 'Auto' },
-    { code: 'ja', name: 'Japanese' },
-    { code: 'ko', name: 'Korean' },
-    { code: 'zh', name: 'Chinese' },
-    { code: 'en', name: 'English' },
-    { code: 'es', name: 'Spanish' },
+    { code: 'auto', name:  '🌐 Auto Detect' },
+    { code: 'ja', name: '🇯🇵 Japanese' },
+    { code: 'ko', name: '🇰🇷 Korean' },
+    { code: 'zh', name: '🇨🇳 Chinese' },
+    { code: 'en', name: '🇬🇧 English' },
+    { code: 'es', name: '🇪🇸 Spanish' },
+    { code: 'ru', name: '🇷🇺 Russian' },
+    { code: 'pt', name: '🇵🇹 Portuguese' },
+
     // Add more languages as needed
   ]
   // Function to apply Romanization
