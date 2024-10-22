@@ -17,9 +17,17 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import LanguageSettings from './LanguageSettings' // Ensure correct import path
 
+// Import Romanization Libraries
+import { toRomaji } from 'wanakana'
+import { romanize } from '@romanize/korean'
+
+// Optional: If you have a separate LyricsLine component, import it here
+// import LyricsLine from './LyricsLine'
+
 interface Lyric {
   original: string
   translated: string
+  romanized?: string // Optional field for Romanized text
   startTimeMs: number
   endTimeMs: number
 }
@@ -46,7 +54,7 @@ interface EnhancedLyricsTranslatorProps {
 
 export default function EnhancedLyricsTranslator({ refreshToken, onLogout, accessToken }: EnhancedLyricsTranslatorProps) {
   const [lyrics, setLyrics] = useState<Lyric[]>([])
-  const [showRomanization, setShowRomanization] = useState(true)
+  const [isRomanizationEnabled, setIsRomanizationEnabled] = useState<boolean>(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentLineIndex, setCurrentLineIndex] = useState(0)
   const [progress, setProgress] = useState(0)
@@ -56,6 +64,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [currentTrack, setCurrentTrack] = useState<Track | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isRomanizing, setIsRomanizing] = useState<boolean>(false) // Loading state for Romanization
 
   // Translation settings state
   const [fromLanguage, setFromLanguage] = useState<string>('auto') // Default to auto-detect
@@ -71,6 +80,46 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const onTokenRefresh = useCallback(async () => {
     await refreshToken()
   }, [refreshToken])
+
+  // Function to apply Romanization
+  const applyRomanization = useCallback(async (lyricsToRomanize: Lyric[]) => {
+    console.log('Starting Romanization...')
+    setIsRomanizing(true)
+    if (fromLanguage === 'ja') {
+      try {
+        const romanizedLyrics = lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: typeof line.original === 'string' ? toRomaji(line.original) : '',
+        }))
+        console.log('Romanized Lyrics:', romanizedLyrics)
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Japanese Romanization:', error)
+        setError('Failed to Romanize Japanese lyrics.')
+      }
+    } else if (fromLanguage === 'ko') {
+      try {
+        const romanizedLyrics = lyricsToRomanize.map(line => ({
+          ...line,
+          romanized: typeof line.original === 'string' ? romanize(line.original) : '',
+        }))
+        console.log('Romanized Lyrics:', romanizedLyrics)
+        setLyrics(romanizedLyrics)
+      } catch (error: any) {
+        console.error('Error during Korean Romanization:', error)
+        setError('Failed to Romanize Korean lyrics.')
+      }
+    } else {
+      // Unsupported language for Romanization
+      console.log('Unsupported language for Romanization. Clearing Romanized text.')
+      setLyrics(lyricsToRomanize.map(line => ({
+        ...line,
+        romanized: '',
+      })))
+    }
+    setIsRomanizing(false)
+    console.log('Romanization completed.')
+  }, [fromLanguage, romanize])
 
   // Fetch with token, retry once on 401
   const fetchWithToken = useCallback(
@@ -134,11 +183,16 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
       }))
 
       setLyrics(updatedLyrics)
+
+      // Apply Romanization if enabled
+      if (isRomanizationEnabled) {
+        applyRomanization(updatedLyrics)
+      }
     } catch (error: any) {
       console.error('Translation error:', error)
       setError(error.message || 'Failed to translate lyrics.')
     }
-  }, [fromLanguage, toLanguage])
+  }, [fromLanguage, toLanguage, isRomanizationEnabled, applyRomanization])
 
   // Fetch lyrics from the API route
   const fetchLyrics = useCallback(async (trackName: string, artistName: string) => {
@@ -497,25 +551,58 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
             </div>
           </div>
 
-          {/* Language Settings */}
-          <LanguageSettings
-            fromLanguage={fromLanguage}
-            toLanguage={toLanguage}
-            setFromLanguage={setFromLanguage}
-            setToLanguage={setToLanguage}
-            rubyText={rubyText}
-            setRubyText={setRubyText}
-            hangulSystem={hangulSystem}
-            setHangulSystem={setHangulSystem}
-            japaneseTarget={japaneseTarget}
-            setJapaneseTarget={setJapaneseTarget}
-            japaneseMode={japaneseMode}
-            setJapaneseMode={setJapaneseMode}
-            romajiSystem={romajiSystem}
-            setRomajiSystem={setRomajiSystem}
-            okuriganaDelimiter={okuriganaDelimiter}
-            setOkuriganaDelimiter={setOkuriganaDelimiter}
-          />
+          {/* Language Settings and Romanization Toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <LanguageSettings
+              fromLanguage={fromLanguage}
+              toLanguage={toLanguage}
+              setFromLanguage={setFromLanguage}
+              setToLanguage={setToLanguage}
+              rubyText={rubyText}
+              setRubyText={setRubyText}
+              hangulSystem={hangulSystem}
+              setHangulSystem={setHangulSystem}
+              japaneseTarget={japaneseTarget}
+              setJapaneseTarget={setJapaneseTarget}
+              japaneseMode={japaneseMode}
+              setJapaneseMode={setJapaneseMode}
+              romajiSystem={romajiSystem}
+              setRomajiSystem={setRomajiSystem}
+              okuriganaDelimiter={okuriganaDelimiter}
+              setOkuriganaDelimiter={setOkuriganaDelimiter}
+            />
+            {/* Romanization Toggle */}
+            <div className="flex items-center">
+              <span className="mr-2 text-sm text-zinc-400">Romanization</span>
+              <Switch
+                checked={isRomanizationEnabled}
+                onCheckedChange={(checked) => {
+                  console.log('Romanization toggled:', checked)
+                  setIsRomanizationEnabled(checked)
+                  if (checked) {
+                    console.log('Applying Romanization...')
+                    applyRomanization(lyrics)
+                  } else {
+                    console.log('Removing Romanization...')
+                    const clearedLyrics = lyrics.map(line => ({
+                      ...line,
+                      romanized: '',
+                    }))
+                    setLyrics(clearedLyrics)
+                  }
+                }}
+                aria-label="Toggle Romanization"
+              />
+            </div>
+          </div>
+
+          {/* Loading Indicator for Romanization */}
+          {isRomanizing && (
+            <div className="flex items-center mb-4">
+              <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+              <span className="text-sm text-zinc-400">Applying Romanization...</span>
+            </div>
+          )}
 
           {/* Error Alert */}
           {error && (
@@ -551,8 +638,14 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                 >
                   <div className="pl-2 -ml-2">
                     <p className="text-lg font-semibold">{line.original}</p>
+                    {/* Display Romanized lyrics if enabled */}
+                    {isRomanizationEnabled && line.romanized && (
+                      <p className="text-sm text-zinc-300 italic">{line.romanized}</p>
+                    )}
                     {/* Display translated lyrics if available */}
-                    {line.translated && <p className="text-sm text-zinc-300">{line.translated}</p>}
+                    {line.translated && (
+                      <p className="text-sm text-zinc-300">{line.translated}</p>
+                    )}
                   </div>
                 </div>
               ))
