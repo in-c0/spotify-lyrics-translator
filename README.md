@@ -46,7 +46,31 @@ The app should be portable to **Mac, Linux**, and **mobile devices**, although t
 
 ### Setup Instructions
 
-To set up this app, you’ll need both **Google Translate API** and **Spotify Developer** credentials.
+1. Clone the repo
+```
+git clone https://github.com/in-c0/spotify-lyrics-translator.git
+```
+2. Install dependencies
+```
+npm install
+```
+3. Setup Environment Variables (See below)
+```
+NEXT_PUBLIC_SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_ID=...
+SPOTIFY_CLIENT_SECRET=...
+NEXT_PUBLIC_SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
+SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
+GOOGLE_TRANSLATE_API_KEY=...
+```
+4. Run the development server
+```
+npm run dev
+```
+
+**Setup Environment Variables**
+To set up this app, you’ll need both **Google Translate API** and **Spotify Developer** credentials. 
+If you are developing locally, create a new file in the root project directory named `.env.local`. (Do NOT share your API keys/Secret or commit the file!)
 
 #### 1. **Google Translate API**
 - Create a **Google Cloud developer account** and generate your API key.
@@ -56,7 +80,8 @@ To set up this app, you’ll need both **Google Translate API** and **Spotify De
 ```
 GOOGLE_TRANSLATE_API_KEY=...(Set up here: https://cloud.google.com/apis)
 ```
-2. Spotify Developer Account
+
+#### 2. Spotify Developer Account
 Set up your [Spotify Developer](https://developer.spotify.com/dashboard) account and obtain your client secret.
 ```
 SPOTIFY_CLIENT_SECRET=... (Set up here: https://developer.spotify.com/documentation/web-api)
