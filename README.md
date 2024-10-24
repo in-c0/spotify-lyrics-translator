@@ -25,7 +25,7 @@
 
 </div>
 
----
+  <br />
 
 ### **Why build this?**
 
@@ -36,13 +36,13 @@ This project was built primarily for **educational purposes** and to explore add
 
 The app should be portable to **Mac, Linux**, and **mobile devices**, although these platforms haven't been tested yet.
 
----
+  <br />
 
 ### Current Issues (v0.1):
 - **Japanese Romanization** is incomplete due to the complexity of Kanji.
 - **Language settings** have not yet been implemented.
 
----
+  <br />
 
 ### Setup Instructions
 
@@ -79,31 +79,34 @@ I’m exploring ways to make this app more accessible to users, as most cloud-ba
    
  Alternatively, I could consider hosting a server with some advertisements, as long as this complies with license agreements. The current integration with the Musixmatch API poses challenges, as access to it is difficult to obtain.
 
----
+  <br />
 
 ### Credits
 
-A big thank you to [Lyrix by BlueCatSoftware](https://github.com/BlueCatSoftware/Lyrix) for providing the lyrics through Musixmatch.
+A big thank you to @BlueCatSoftware for providing the [Lyrix](https://github.com/BlueCatSoftware/Lyrix) through Musixmatch,
+and to @sglkc for the inspiration behind this project ([Chrome Extension](https://github.com/sglkc/moegi)).
 
-Also, thanks to sglkc's [Chrome Extension](https://github.com/sglkc/moegi) for the inspiration behind this project.
-
----
+  <br />
 
 ### License
 
 MIT License
 
----
+  <br />
+
+### Have Questions or Feature Requests?
+
+Feel free to start a new [Discussion](https://github.com/in-c0/spotify-lyrics-translator/discussions) or create a new [Issue](https://github.com/in-c0/spotify-lyrics-translator/issues). Contributions are welcome via issues or PRs!
+
+  <br />
 
 ### Disclaimer
 
 Please note that directly modifying the Spotify Desktop client may violate **Spotify's Terms of Service**. Although this app does **not** modify the Spotify client directly, please ensure that you comply with all relevant terms and conditions when using this app.
 
-- [Spotify Developer Policy](https://developer.spotify.com/policy/)
-- [Spotify Terms of Service](https://www.spotify.com/legal/end-user-agreement/)
+[Spotify Developer Policy](https://developer.spotify.com/policy/)
 
----
+[Spotify Terms of Service](https://www.spotify.com/legal/end-user-agreement/)
 
-### Have Questions or Feature Requests?
+  <br />
 
-Feel free to start a new [Discussion](https://github.com/in-c0/spotify-lyrics-translator/discussions) or create a new [Issue](https://github.com/in-c0/spotify-lyrics-translator/issues). Contributions are welcome via issues or PRs!
