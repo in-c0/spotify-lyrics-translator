@@ -55,7 +55,7 @@ git clone https://github.com/in-c0/spotify-lyrics-translator.git
 ```
 npm install
 ```
-3. Setup [Environment Variables](#setup-env)
+3. Setup <a href="#environment-variables">Environment Variables</a>
 ```
 NEXT_PUBLIC_SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_ID=...
@@ -71,7 +71,7 @@ npm run dev
 
 ### How To Set Up Environment Variables
 
-To [set up this app](#setup-env), you’ll need both **Google Translate API** and **Spotify Developer** credentials. 
+To [set up this app](#environment-variables), you’ll need both **Google Translate API** and **Spotify Developer** credentials. 
 If you are developing locally, create a new file in the root project directory named `.env.local`. (Do NOT share your API keys/Secret or commit the file!)
 
 #### 1. **Google Translate API**
