@@ -104,7 +104,7 @@ I’m exploring ways to make this app more accessible to users, as most cloud-ba
  - Local LLM for translation ([GPT4ALL](https://github.com/nomic-ai/gpt4all))
  - Local transcription AI (e.g. [Moises.ai](https://moises.ai/) or finetune Whisper, if there is a reliable way to somehow extract only the vocals out)
    
- Alternatively, I could consider hosting a server with some advertisements, as long as this complies with license agreements. The current integration with the Musixmatch API poses challenges, as access to it is difficult to obtain.
+(... or I could host a server with a couple of ads, as long as it aligns with the license agreements... It probably won't in the current state given the Musixmatch API being difficult to obtain.)
 
   <br />
 
