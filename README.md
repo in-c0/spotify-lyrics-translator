@@ -42,12 +42,11 @@ SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
 GOOGLE_TRANSLATE_API_KEY=...
 ```
 
-I am currently weighing options to make it more accessible for users who want to use the service. Most legitimate options cost $$, and free options are only available with significant performance drop. In an ideal, near-future scenario, we should be able to run everything locally without the need for cloud interactions (except for of course interacting with Spotify), i.e.
+I am currently weighing options to make it more accessible for users who want to use the service out of the box. Most legitimate options cost some dollars, and free options come only with significant performance drop. Ideally, we should be able to run everything locally without the need for cloud interactions (except for of course interacting with Spotify) in near future, i.e.
  - Local LLM for translation ((GPT4ALL)[https://github.com/nomic-ai/gpt4all])
  - Local transcription AI (e.g. (Moises.ai)[https://moises.ai/] or finetune Whisper, if there is a reliable way to somehow extract only the vocals out)
 
- ... or I could just host a server with a couple of ads, as long as it aligns with the license agreements.
- (It most likely won't in the current state given the Musixmatch API being difficult to obtain.)
+ ... or I could host a server with a couple of ads, as long as it aligns with the license agreements... It probably won't in the current state given the Musixmatch API being difficult to obtain.
 
 
 ### Credits
@@ -59,10 +58,10 @@ Chrome extension for Spotify Web Player: https://github.com/sglkc/moegi
 
 ### License
 
-MIT
+MIT License
 
 --
 
 
-Have questions/feature requests? Send a DM.
+Have questions/feature requests? Start a new (Discussion)[https://github.com/in-c0/spotify-lyrics-translator/discussions] or create a new (Issue)[https://github.com/in-c0/spotify-lyrics-translator/issues]
 Feel free to share feedback or contribute by creating a new issue/PR!
