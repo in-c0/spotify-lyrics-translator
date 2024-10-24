@@ -1,38 +1,68 @@
+<div align="center">
+  <h1>Spotify Lyrics Translator (v0.1) </h1>
+  <video src="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb" width="360" autoplay="false"></video>
 
-# Spotify Lyrics Translation App (v0.1) for Desktop
+  <br />
+ 
+ [![MIT License](https://img.shields.io/github/license/in-c0/spotify-lyrics-translator?t=1)](LICENSE)
+ [![Issues](https://img.shields.io/github/issues/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/issues)
+ [![Pull Requests](https://img.shields.io/github/issues-pr/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/pulls)
+ [![Latest Release](https://img.shields.io/github/v/release/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/releases/latest)
 
-(Demo video here)
 
-A NextJS/React app for Spotify Desktop. Inspired by the **Chrome extension for Spotify Web Player** - Thanks to @sglkc for sharing the beautiful work!
-Try it here >>> https://github.com/sglkc/moegi <<<
+  <strong> 🎵 A NextJS/React lyrics translator app designed to work with Spotify Desktop 🎤🎵 </strong>
 
-This app works in tandem with Spotify Desktop and can communicate with the user account through Spotify Web Playback SDK, unlike @sglkc/moegi which runs on Chrome and only modifies the end result/CSS. The end user experience is pretty much the same anyways.
+  <a href="https://github.com/in-c0/spotify-lyrics-translator/issues">Report a Bug</a>
+  <strong>·</strong>
+  <a href="https://github.com/in-c0/spotify-lyrics-translator/issues">Request a Feature</a>
 
-**Then why build this?**
-Largely for educational purposes, and for further extension possibilities as a desktop wallpaper or app. Something we could explore are:
-- Reacting to audio
-- AI Lyrics analysis
-- Community analysis (Genius?)
 
-Should also be portable to Mac/Linux and mobile devices, but this hasn't been tested yet.
+  <br />
 
-### Current issues (v0.1):
-! Japanese romanization is partial due to Kanji
-! Language settings are not implemented yet
+  **Check out <a href="https://github.com/sglkc/moegi">Moegi Spotify Web Extension made by @sglkc</a>** (Credits for the original idea & design inspiration)
 
-### Setup
+  This app communicates with Spotify Desktop through the **Spotify Web Playback SDK**, more native OS-level extension possibilities compared to the Chrome extension for the Spotify Web Player, which primarily modifies CSS. 
 
-The app uses Google Translate API, which means you need to set up a Google Cloud developer account and enter your API Key in `.env`.
-(Google Translate API key is **not free**, if you want alternatives you could look at: https://www.npmjs.com/package/google-translate-api-x )
+</div>
+
+---
+
+### **Why build this?**
+
+This project was built primarily for **educational purposes** and to explore additional functionalities that could be extended into:
+- **Audio reactions**
+- **AI-driven lyrics analysis**
+- **Community insights** (e.g., integration with **Genius**)
+
+The app should be portable to **Mac, Linux**, and **mobile devices**, although these platforms haven't been tested yet.
+
+---
+
+### Current Issues (v0.1):
+- **Japanese Romanization** is incomplete due to the complexity of Kanji.
+- **Language settings** have not yet been implemented.
+
+---
+
+### Setup Instructions
+
+To set up this app, you’ll need both **Google Translate API** and **Spotify Developer** credentials.
+
+#### 1. **Google Translate API**
+- Create a **Google Cloud developer account** and generate your API key.
+  
+  *Note*: The Google Translate API is **not free**. If you're looking for alternatives, check out [google-translate-api-x](https://www.npmjs.com/package/google-translate-api-x).
 
 ```
 GOOGLE_TRANSLATE_API_KEY=...(Set up here: https://cloud.google.com/apis)
 ```
-as well as the Spotify developer account:
+2. Spotify Developer Account
+Set up your [Spotify Developer](https://developer.spotify.com/dashboard) account and obtain your client secret.
 ```
 SPOTIFY_CLIENT_SECRET=... (Set up here: https://developer.spotify.com/documentation/web-api)
 ```
-The final .env would look something like this if you run it locally:
+
+Your final `.env` would look something like this for local development:
 ```
 NEXT_PUBLIC_SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_ID=...
@@ -42,26 +72,38 @@ SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
 GOOGLE_TRANSLATE_API_KEY=...
 ```
 
-I am currently weighing options to make it more accessible for users who want to use the service out of the box. Most legitimate options cost some dollars, and free options come only with significant performance drop. Ideally, we should be able to run everything locally without the need for cloud interactions (except for of course interacting with Spotify) in near future, i.e.
- - Local LLM for translation ((GPT4ALL)[https://github.com/nomic-ai/gpt4all])
- - Local transcription AI (e.g. (Moises.ai)[https://moises.ai/] or finetune Whisper, if there is a reliable way to somehow extract only the vocals out)
+I’m exploring ways to make this app more accessible to users, as most cloud-based solutions incur costs. Some ideas for future development include:
+ - Running everything locally, reducing dependency on cloud services (except for Spotify interaction), i.e.
+ - Local LLM for translation ([GPT4ALL](https://github.com/nomic-ai/gpt4all))
+ - Local transcription AI (e.g. [Moises.ai](https://moises.ai/) or finetune Whisper, if there is a reliable way to somehow extract only the vocals out)
+   
+ Alternatively, I could consider hosting a server with some advertisements, as long as this complies with license agreements. The current integration with the Musixmatch API poses challenges, as access to it is difficult to obtain.
 
- ... or I could host a server with a couple of ads, as long as it aligns with the license agreements... It probably won't in the current state given the Musixmatch API being difficult to obtain.
-
+---
 
 ### Credits
 
-Big Thanks to [Lyrix by BlueCatSoftware](https://github.com/BlueCatSoftware/Lyrix) for providing the lyrics hosting service through Musixmatch.
+A big thank you to [Lyrix by BlueCatSoftware](https://github.com/BlueCatSoftware/Lyrix) for providing the lyrics through Musixmatch.
 
-Chrome extension for Spotify Web Player: https://github.com/sglkc/moegi
+Also, thanks to sglkc's [Chrome Extension](https://github.com/sglkc/moegi) for the inspiration behind this project.
 
+---
 
 ### License
 
 MIT License
 
---
+---
 
+### Disclaimer
 
-Have questions/feature requests? Start a new (Discussion)[https://github.com/in-c0/spotify-lyrics-translator/discussions] or create a new (Issue)[https://github.com/in-c0/spotify-lyrics-translator/issues]
-Feel free to share feedback or contribute by creating a new issue/PR!
+Please note that directly modifying the Spotify Desktop client may violate **Spotify's Terms of Service**. Although this app does **not** modify the Spotify client directly, please ensure that you comply with all relevant terms and conditions when using this app.
+
+- [Spotify Developer Policy](https://developer.spotify.com/policy/)
+- [Spotify Terms of Service](https://www.spotify.com/legal/end-user-agreement/)
+
+---
+
+### Have Questions or Feature Requests?
+
+Feel free to start a new [Discussion](https://github.com/in-c0/spotify-lyrics-translator/discussions) or create a new [Issue](https://github.com/in-c0/spotify-lyrics-translator/issues). Contributions are welcome via issues or PRs!
