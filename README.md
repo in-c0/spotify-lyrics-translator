@@ -119,6 +119,8 @@ and to @sglkc for the inspiration behind this project ([Chrome Extension](https:
 
 MIT License
 
+Credits appreciated but not necessary.
+
   <br />
 
 ### Have Questions or Feature Requests?
