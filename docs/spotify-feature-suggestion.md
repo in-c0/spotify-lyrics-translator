@@ -109,6 +109,17 @@ The honest blocker is **not** engineering — it's rights. Lyrics are licensed c
 
 The prototype's own README carries a disclaimer to this effect; the project exists to *demonstrate the UX*, explicitly leaving the rights question to the party that can actually solve it: Spotify.
 
+### 6.1 Why native, not an open API
+
+A reasonable question is: *"Why not just expose lyrics + translation through the developer platform and let third parties build this?"* Because that framing is weaker on every axis that matters:
+
+- **The SDK never exposed lyrics to begin with.** The Web Playback SDK surfaces *playback* state (current track, position, transport controls) — not lyric text. There is no official public Spotify lyrics API. The prototype has to source lyrics from Musixmatch *separately*, precisely because Spotify's lyric data has no sanctioned third-party surface.
+- **Rights don't survive redistribution.** Lyrics are licensed for delivery *inside Spotify's own client*. Handing licensed lyrics — let alone translations and romanizations, which are derivative works — to arbitrary developers through an API is a licensing problem no API design can solve. The same rights wall that stops community tools would stop an API.
+- **Platform direction is consolidation, not expansion.** Recent Web API changes have *narrowed* third-party access to catalog data, not widened it. An "open the lyrics via API" ask runs against that grain; a native feature does not.
+- **The strongest argument only works natively.** The case for this feature is *"only Spotify can clear the rights."* That points squarely at a first-party feature. Reframed as an API, it becomes *"give developers licensed content to redistribute,"* which is a reflexive no.
+
+If a developer-facing angle is ever wanted, the only defensible version is narrow: let approved partners read the **already-rendered lyrics view state** (what the user is currently seeing) rather than raw, redistributable lyric text. That's an integration hook, not a content API — and it's a footnote to this proposal, not the ask.
+
 ---
 
 ## 7. Suggested phased rollout
