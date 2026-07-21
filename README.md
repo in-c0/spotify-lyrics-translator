@@ -1,29 +1,46 @@
 <div align="center">
-  <h1>Spotify Lyrics Translator (v0.1) </h1>
+  <h1>🎤 Spotify Lyrics Translator</h1>
+
+  <strong>Sing along to songs in any language.</strong><br />
+  Live, time-synced <strong>romanization</strong> + <strong>translation</strong> right next to your Spotify lyrics —
+  so you can actually read and sing K-pop, J-pop, anime OSTs, Latin, and more.
+
+  <br /><br />
+
+  <!-- TODO: replace with a looping demo GIF (autoplays on GitHub, works on mobile).
+       Record ~15-30s of a song scrolling with romanization + translation lines,
+       export as .gif or .webp, and reference it here:
+       ![demo](docs/demo.gif) -->
   <video src="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb" width="360" autoplay="false"></video>
 
   <br />
- 
+
  [![MIT License](https://img.shields.io/github/license/in-c0/spotify-lyrics-translator?t=1)](LICENSE)
  [![Issues](https://img.shields.io/github/issues/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/issues)
  [![Pull Requests](https://img.shields.io/github/issues-pr/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/pulls)
  [![Latest Release](https://img.shields.io/github/v/release/in-c0/spotify-lyrics-translator?t=1)](https://github.com/in-c0/spotify-lyrics-translator/releases/latest)
 
-
-  <strong> 🎵 A NextJS/React lyrics translator app designed to work with Spotify Desktop 🎤🎵 </strong>
+  <br />
 
   <a href="https://github.com/in-c0/spotify-lyrics-translator/issues">Report a Bug</a>
   <strong>·</strong>
   <a href="https://github.com/in-c0/spotify-lyrics-translator/issues">Request a Feature</a>
 
-
-  <br />
-
-  **Check out <a href="https://github.com/sglkc/moegi">Moegi Spotify Web Extension made by @sglkc</a>** (Credits for the original idea & design inspiration)
-
-  This app communicates with Spotify Desktop through the **Spotify Web Playback SDK**, more native OS-level extension possibilities compared to the Chrome extension for the Spotify Web Player, which primarily modifies CSS. 
-
 </div>
+
+<br />
+
+### ✨ What it does
+
+- 🔤 **Romanization** — renders non-Latin scripts (Japanese, Korean, Chinese, Cyrillic) in Latin characters so you can sing along even if you can't read the original.
+- 🌍 **Translation** — shows your language beneath each synced line so you understand what the song means.
+- ⏱️ **Time-synced** — lines track the music via the **Spotify Web Playback SDK** (more native than CSS-only web-player extensions).
+- 💸 **No credit card to try** — translation works out of the box with a free, no-key translator by default. An official Google Translate API key is *optional* for higher reliability.
+- 🖥️ **Runs locally, bring-your-own keys** — nothing is hosted; your Spotify credentials stay on your machine. This is an open-source hobby/educational project.
+
+> Inspired by [Moegi](https://github.com/sglkc/moegi) by @sglkc (original idea & design inspiration).
+
+> ⚠️ Requires a **Spotify Premium** account — the Web Playback SDK will not stream without it.
 
   <br />
 
@@ -55,14 +72,9 @@ git clone https://github.com/in-c0/spotify-lyrics-translator.git
 ```
 npm install
 ```
-3. Set up <a href="#how-to-set-up-environment-variables">Environment Variables</a>
+3. Set up <a href="#how-to-set-up-environment-variables">Environment Variables</a> — just copy the example file and fill in your Spotify keys:
 ```
-NEXT_PUBLIC_SPOTIFY_CLIENT_ID=...
-SPOTIFY_CLIENT_ID=...
-SPOTIFY_CLIENT_SECRET=...
-NEXT_PUBLIC_SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
-SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
-GOOGLE_TRANSLATE_API_KEY=...
+cp .env.example .env.local
 ```
 4. Run the development server
 ```
@@ -71,16 +83,15 @@ npm run dev
 
 ### How To Set Up Environment Variables
 
-To set up this app, you’ll need both **Google Translate API** and **Spotify Developer** credentials. 
-If you are developing locally, create a new file in the root project directory named `.env.local`. (Do NOT share your API keys/Secret or commit the file!)
+All variables live in `.env.local` (copy it from [`.env.example`](.env.example)). Only the **Spotify** credentials are required — the translator works with no key by default. (Do NOT share your keys/secret or commit `.env.local`!)
 
-#### 1. **Google Translate API**
-- Create a **Google Cloud developer account** and generate your API key.
-  
-  *Note*: The Google Translate API is **not free**. If you're looking for alternatives, check out [google-translate-api-x](https://www.npmjs.com/package/google-translate-api-x).
+#### 1. **Translation (optional — free by default)**
+The app uses a free, no-key translator out of the box, so you can leave `GOOGLE_TRANSLATE_API_KEY` blank. Set it only if you want the official Google Cloud Translate API for higher reliability / rate limits.
+
+  *Note*: the free translator is unofficial and rate-limited — perfect for a local hobby setup, not production scale.
 
 ```
-GOOGLE_TRANSLATE_API_KEY=...(Set up here: https://cloud.google.com/apis)
+GOOGLE_TRANSLATE_API_KEY=   # leave blank to use the free translator
 ```
 
 #### 2. Spotify Developer Account

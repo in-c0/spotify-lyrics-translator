@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      # NOTE: `npm run build` is intentionally NOT run here yet. Several component
+      # files under `src/pages/` (e.g. UserProfileMenu, LanguageSelector) are treated
+      # as routes by Next.js and crash static export. Once they are moved to
+      # `src/components/`, add a `Build` step here with dummy Spotify env vars.
