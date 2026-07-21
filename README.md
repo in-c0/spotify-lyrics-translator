@@ -7,11 +7,11 @@
 
   <br /><br />
 
-  <!-- TODO: replace with a looping demo GIF (autoplays on GitHub, works on mobile).
-       Record ~15-30s of a song scrolling with romanization + translation lines,
-       export as .gif or .webp, and reference it here:
-       ![demo](docs/demo.gif) -->
-  <video src="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb" width="360" autoplay="false"></video>
+  <a href="https://github.com/in-c0/spotify-lyrics-translator">
+    <img src="docs/demo.gif" alt="Live demo: Korean lyrics shown with Latin romanization and English translation, time-synced to a Spotify track" width="600" />
+  </a>
+
+  <sub><a href="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb">▶ watch the full-length video</a></sub>
 
   <br />
 
