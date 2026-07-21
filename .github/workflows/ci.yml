@@ -24,7 +24,12 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
-      # NOTE: `npm run build` is intentionally NOT run here yet. Several component
-      # files under `src/pages/` (e.g. UserProfileMenu, LanguageSelector) are treated
-      # as routes by Next.js and crash static export. Once they are moved to
-      # `src/components/`, add a `Build` step here with dummy Spotify env vars.
+      - name: Build
+        run: npm run build
+        env:
+          # Dummy values so `next build` can compile; no real credentials needed.
+          NEXT_PUBLIC_SPOTIFY_CLIENT_ID: ci-dummy
+          SPOTIFY_CLIENT_ID: ci-dummy
+          SPOTIFY_CLIENT_SECRET: ci-dummy
+          NEXT_PUBLIC_SPOTIFY_REDIRECT_URI: http://localhost:3000/callback
+          SPOTIFY_REDIRECT_URI: http://localhost:3000/callback

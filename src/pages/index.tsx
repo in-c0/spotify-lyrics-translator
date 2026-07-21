@@ -7,7 +7,7 @@ import '../styles/globals.css'
 
 // Dynamically import EnhancedLyricsTranslator with no SSR
 const EnhancedLyricsTranslator = dynamic(
-  () => import('./EnhancedLyricsTranslator'),
+  () => import('../components/EnhancedLyricsTranslator'),
   { ssr: false }
 )
 
