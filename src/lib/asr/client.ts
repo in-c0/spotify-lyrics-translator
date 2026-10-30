@@ -140,6 +140,20 @@ export class AudioCapture {
     return out
   }
 
+  /** Input loudness over the last ~150 ms, 0..1 (for a live level meter). */
+  level(): number {
+    const n = Math.min(this.written, 2400)
+    if (n === 0) return 0
+    let sum = 0
+    for (let i = this.written - n; i < this.written; i++) {
+      const v = this.ring[i % this.ring.length]
+      sum += v * v
+    }
+    // RMS → rough perceptual 0..1 (‑50 dBFS → 0, ‑10 dBFS → 1)
+    const db = 10 * Math.log10(sum / n + 1e-12)
+    return Math.min(1, Math.max(0, (db + 50) / 40))
+  }
+
   get capturedSeconds() {
     return this.written / 16000
   }

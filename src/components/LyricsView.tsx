@@ -8,6 +8,8 @@ import { isSameAsOriginal, romanizeLine, type RomanizableLanguage } from '@/lib/
 interface LyricsViewProps {
   lyrics: Lyric[]
   activeIndex: number
+  /** Line the live transcription last matched; gets a small "heard" marker. */
+  markedIndex?: number
   /** Playback position, used to sweep the active line and fill instrumental-break dots. */
   positionMs?: number
   /** Language to romanize from, or null to hide romanization. */
@@ -21,7 +23,7 @@ interface LyricsViewProps {
 const FOLLOW_RESUME_MS = 4000
 const ANCHOR = 0.36 // active line sits a bit above the vertical centre
 
-export default function LyricsView({ lyrics, activeIndex, positionMs = -1, romanizeFrom, showTranslation, onSeek, className = '' }: LyricsViewProps) {
+export default function LyricsView({ lyrics, activeIndex, markedIndex = -1, positionMs = -1, romanizeFrom, showTranslation, onSeek, className = '' }: LyricsViewProps) {
   const scroller = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<(HTMLDivElement | null)[]>([])
   const [following, setFollowing] = useState(true)
@@ -94,6 +96,9 @@ export default function LyricsView({ lyrics, activeIndex, positionMs = -1, roman
               <p className="lyric-original">
                 {/* Inline span: with box-decoration-break "slice" the sweep runs through wrapped lines in reading order. */}
                 <span className={state === 'active' && positionMs >= 0 ? 'lyric-sweep' : undefined}>{line.original}</span>
+                {i === markedIndex && (
+                  <span className="ml-2 inline-block translate-y-[-0.2em] rounded-full bg-emerald-300/90 px-2 py-0.5 align-middle text-[11px] font-bold uppercase tracking-wide text-black">heard</span>
+                )}
               </p>
               {showRoman && <p className="lyric-roman">{roman}</p>}
               {showTrans && <p className="lyric-trans">{line.translated}</p>}

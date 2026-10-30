@@ -48,7 +48,7 @@
 ### 🎧 No-login mode (`/listen`)
 Don't want to set up a Spotify app? Open `/listen`, search a song (lyrics from LRCLIB), play it anywhere, and either:
 - **tap a line** when it's sung to sync the timeline, or
-- **Follow by listening** — after a one-time consent, the page downloads a speech model and runs it **locally in your browser**. It listens through your mic or a shared tab and moves the lyrics to where the song is. Audio stays in memory: never uploaded, never saved.
+- **Local song lyrics transcription (beta)** — after a one-time consent, the page downloads a speech model and runs it **locally in your browser**. It listens through your mic or a shared tab, shows a live transcript of what it hears, marks the lyric line it matched, and moves the lyrics there. Audio stays in memory: never uploaded, never saved.
 
 | Device | Model | One-time download |
 | --- | --- | --- |
