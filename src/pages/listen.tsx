@@ -300,6 +300,7 @@ export default function ListenPage() {
           className="flex-1"
           lyrics={lyrics}
           activeIndex={activeIndex}
+          positionMs={synced ? positionMs : -1}
           romanizeFrom={romanizationOn ? romanizeLang : null}
           showTranslation={translationOn}
           onSeek={syncToLine}
