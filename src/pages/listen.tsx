@@ -1,207 +1,184 @@
-// pages/listen.tsx — no-login mode: search a song, then sync by tapping a line or by listening.
-// Listening runs a speech model locally (after one-time consent); audio never leaves the device.
+// pages/listen.tsx — no login needed.
+//   /listen?q=…   search for a song
+//   /listen?id=…  the song plays right here (YouTube) and the lyrics follow it.
+// If the song is playing somewhere else instead, lyrics can be synced by tapping a line or with
+// "Local song lyrics transcription (beta)".
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
-import { AudioLines, Loader2, Search, Square } from 'lucide-react'
+import { useRouter } from 'next/router'
+import { ArrowLeft, Loader2, Minus, MonitorSpeaker, Plus, Youtube } from 'lucide-react'
 import PlayerShell from '@/components/PlayerShell'
 import LyricsView from '@/components/LyricsView'
+import SongSearch from '@/components/SongSearch'
+import { TranscriptionButton, TranscriptionDialog, TranscriptionPanel, useTranscription, type MatchInfo } from '@/components/Transcription'
 import { activeLineIndex, type Lyric } from '@/lib/lrc'
-import { lyricsOf, searchTracks, type LrclibTrack } from '@/lib/lrclibClient'
+import { findForDuration, getTrack, lyricsOf, type LrclibTrack } from '@/lib/lrclibClient'
 import { romanizableLanguage } from '@/lib/romanize'
 import { LANGUAGE_NAMES, TARGET_LANGUAGES, translateLines } from '@/lib/translateClient'
 import { usePreference } from '@/lib/usePreference'
+import { useYouTubePlayer } from '@/lib/useYouTubePlayer'
 import { alignTranscript } from '@/lib/align'
-import { AsrClient, AudioCapture, ENGINE_INFO, type EngineKind } from '@/lib/asr/client'
-
-type ListenState =
-  | { kind: 'off' }
-  | { kind: 'consent'; engine: EngineKind }
-  | { kind: 'loading'; engine: EngineKind; loaded: number; total: number }
-  | { kind: 'choose-source'; engine: EngineKind }
-  | { kind: 'listening'; engine: EngineKind; phase: 'listening' | 'transcribing'; heard: string; latencyMs: number; match: MatchInfo | null }
-  | { kind: 'error'; message: string }
-
-/** What the last transcript did to the lyrics, shown in the transcription panel. */
-type MatchInfo =
-  | { kind: 'moved'; line: number; fromMs: number; toMs: number }
-  | { kind: 'confirmed'; line: number }
-  | { kind: 'line'; line: number } // text-only lyrics: highlighted the matched line
-  | { kind: 'none' }
-
-const FEATURE_NAME = 'Local song lyrics transcription'
-const WINDOW_S = 8 // singing transcribes far better in 6–10 s windows than in short chunks
-const MIN_AUDIO_S = 3
 
 export default function ListenPage() {
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState<LrclibTrack[] | null>(null)
-  const [searching, setSearching] = useState(false)
-  const [searchError, setSearchError] = useState('')
+  const router = useRouter()
+  const id = Number(router.query.id) || 0
+  const q = typeof router.query.q === 'string' ? router.query.q : ''
+
+  // Render nothing query-dependent until after hydration (the static HTML has no query).
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  if (!mounted || !router.isReady) return <div className="min-h-[100dvh] bg-zinc-950" />
+  if (id) return <SongPlayer key={id} id={id} />
+
+  return (
+    <>
+      <Head><title>Search a song · Lyrics Translator</title></Head>
+      <div className="min-h-[100dvh] bg-zinc-950 px-5 py-6 text-white sm:px-10 sm:py-10">
+        <div className="mx-auto max-w-xl">
+          <Link href="/" aria-label="Home" title="Home" className="inline-grid h-10 w-10 place-items-center rounded-full bg-white/10 hover:bg-white/20">
+            <ArrowLeft className="h-5 w-5" />
+          </Link>
+          <h1 className="mt-6 text-3xl font-extrabold">Pick a song</h1>
+          <p className="mt-1 text-white/60">It plays here, with the lyrics, pronunciation and translation line by line.</p>
+          <div className="mt-6">
+            <SongSearch
+              autoFocus
+              initialQuery={q}
+              onQueryChange={value => {
+                if (value !== q) router.replace({ pathname: '/listen', query: value ? { q: value } : {} }, undefined, { shallow: true })
+              }}
+              onPick={t => router.push({ pathname: '/listen', query: { id: t.id } })}
+            />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+type Mode = 'here' | 'elsewhere'
+
+function SongPlayer({ id }: { id: number }) {
+  const router = useRouter()
   const [track, setTrack] = useState<LrclibTrack | null>(null)
+  const [loadError, setLoadError] = useState('')
   const [lyrics, setLyrics] = useState<Lyric[]>([])
   const [detected, setDetected] = useState('')
+  const [mode, setMode] = useState<Mode>('here')
+  const [videos, setVideos] = useState<string[]>([])
+  const [videoLookup, setVideoLookup] = useState<'loading' | 'done' | 'failed'>('loading')
+  const [offsetMs, setOffsetMs] = useState(0)
 
   const [romanizationOn, setRomanizationOn] = usePreference('romanization', true)
   const [translationOn, setTranslationOn] = usePreference('translation', true)
   const [target, setTarget] = usePreference('targetLanguage', 'en')
+  const [hint, setHint] = useState(false)
 
-  // ── Search ──
+  // ── Load the song and its lyrics ──
   useEffect(() => {
-    const q = query.trim()
-    if (q.length < 2) { setResults(null); return }
     const controller = new AbortController()
-    const timer = setTimeout(async () => {
-      setSearching(true)
-      setSearchError('')
-      try {
-        setResults((await searchTracks(q, controller.signal)).slice(0, 12))
-      } catch (e: any) {
-        if (e.name !== 'AbortError') setSearchError(e.message)
-      } finally {
-        setSearching(false)
-      }
-    }, 300)
-    return () => { clearTimeout(timer); controller.abort() }
-  }, [query])
+    getTrack(id, controller.signal)
+      .then(t => {
+        if (!t) { setLoadError('This song could not be found.'); return }
+        setTrack(t)
+        setLyrics(lyricsOf(t))
+      })
+      .catch(e => { if (e.name !== 'AbortError') setLoadError(e.message || 'Could not load this song.') })
+    return () => controller.abort()
+  }, [id])
 
-  // ── Clock (synced lyrics) ──
-  const clock = useRef({ base: 0, at: 0, playing: false })
-  const [positionMs, setPositionMs] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
+  // Translate (again when the target language changes).
+  const lyricsKey = lyrics.map(l => l.original).join('\n')
   useEffect(() => {
-    const id = setInterval(() => {
+    if (!lyricsKey) return
+    let stale = false
+    translateLines(lyricsKey.split('\n'), target)
+      .then(({ lines, detected: lang }) => {
+        if (stale) return
+        setDetected(lang)
+        setLyrics(prev => prev.map((l, i) => ({ ...l, translated: lines[i] || '' })))
+      })
+      .catch(() => {})
+    return () => { stale = true }
+  }, [lyricsKey, target])
+
+  // Find a recording to play here.
+  useEffect(() => {
+    if (!track) return
+    const params = new URLSearchParams({ track: track.trackName, artist: track.artistName, seconds: String(Math.round(track.duration)) })
+    fetch(`/api/video?${params}`)
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(d => {
+        const ids = (d.videos || []).map((v: { id: string }) => v.id)
+        setVideos(ids)
+        setVideoLookup(ids.length ? 'done' : 'failed')
+        if (!ids.length) setMode('elsewhere')
+      })
+      .catch(() => { setVideoLookup('failed'); setMode('elsewhere') })
+  }, [track])
+
+  const ytHost = useRef<HTMLDivElement>(null)
+  const yt = useYouTubePlayer(ytHost, mode === 'here' ? videos : [])
+  const [ytFailed, setYtFailed] = useState(false) // every recording refused to play here
+  useEffect(() => {
+    if (yt.status === 'failed' && mode === 'here' && videos.length) { setYtFailed(true); setMode('elsewhere') }
+  }, [yt.status, mode, videos.length])
+
+  // If the recording is a different length than these lyrics, look for lyrics timed to it.
+  const retimed = useRef(false)
+  useEffect(() => {
+    if (!track || retimed.current || !yt.durationMs) return
+    const seconds = yt.durationMs / 1000
+    if (Math.abs(seconds - track.duration) <= 2) return
+    retimed.current = true
+    findForDuration(track, seconds).then(better => {
+      if (better) setLyrics(prev => lyricsOf(better).map(l => ({ ...l, translated: prev.find(p => p.original === l.original)?.translated || '' })))
+    })
+  }, [track, yt.durationMs])
+
+  // ── Clock for "playing elsewhere" ──
+  const clock = useRef({ base: 0, at: 0, playing: false })
+  const [clockMs, setClockMs] = useState(0)
+  const [clockPlaying, setClockPlaying] = useState(false)
+  useEffect(() => {
+    const t = setInterval(() => {
       const c = clock.current
-      setPositionMs(c.playing ? c.base + Date.now() - c.at : c.base)
+      setClockMs(c.playing ? c.base + Date.now() - c.at : c.base)
     }, 100)
-    return () => clearInterval(id)
+    return () => clearInterval(t)
   }, [])
   const setClock = (ms: number, playing = clock.current.playing) => {
     clock.current = { base: Math.max(0, ms), at: Date.now(), playing }
-    setPositionMs(Math.max(0, ms))
-    setIsPlaying(playing)
+    setClockMs(Math.max(0, ms))
+    setClockPlaying(playing)
   }
-  const now = () => (clock.current.playing ? clock.current.base + Date.now() - clock.current.at : clock.current.base)
+  const clockNow = () => (clock.current.playing ? clock.current.base + Date.now() - clock.current.at : clock.current.base)
 
+  const here = mode === 'here'
+  const positionMs = here ? yt.positionMs + offsetMs : clockMs
+  const durationMs = here && yt.durationMs ? yt.durationMs : track ? Math.round(track.duration * 1000) : 0
+  const isPlaying = here ? yt.isPlaying : clockPlaying
   const synced = lyrics.length > 0 && lyrics[0].startTimeMs >= 0
-  const [followIndex, setFollowIndex] = useState(-1) // used for unsynced lyrics
-  const [heardIndex, setHeardIndex] = useState(-1) // line the last transcript matched (marked in the view)
+
+  const [followIndex, setFollowIndex] = useState(-1)
+  const [heardIndex, setHeardIndex] = useState(-1)
   const activeIndex = synced ? activeLineIndex(lyrics, positionMs) : followIndex
 
-  // ── Pick a track ──
-  const pick = async (t: LrclibTrack) => {
-    setTrack(t)
-    const base = lyricsOf(t)
-    setLyrics(base)
-    setDetected('')
-    setFollowIndex(-1)
-    setClock(0, false)
-    try {
-      const { lines, detected: lang } = await translateLines(base.map(l => l.original), target)
-      setDetected(lang)
-      setLyrics(base.map((l, i) => ({ ...l, translated: lines[i] || '' })))
-    } catch { /* translation is optional */ }
+  const seek = (ms: number) => {
+    if (here) {
+      yt.seek(ms - offsetMs)
+      if (!yt.isPlaying) yt.play()
+    } else setClock(ms, true)
   }
-  useEffect(() => {
-    if (!track || lyrics.length === 0) return
-    let stale = false
-    translateLines(lyrics.map(l => l.original), target)
-      .then(({ lines }) => { if (!stale) setLyrics(prev => prev.map((l, i) => ({ ...l, translated: lines[i] || '' }))) })
-      .catch(() => {})
-    return () => { stale = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target])
+  const toggle = () => (here ? (yt.isPlaying ? yt.pause() : yt.play()) : setClock(clockNow(), !clock.current.playing))
 
-  // Tap a line = "this line is being sung now".
-  const syncToLine = (ms: number) => {
-    if (synced) setClock(ms, true)
-  }
-
-  // ── Listening ──
-  const [listen, setListen] = useState<ListenState>({ kind: 'off' })
-  const asr = useRef<AsrClient | null>(null)
-  const capture = useRef<AudioCapture | null>(null)
-  const loop = useRef<ReturnType<typeof setTimeout>>()
+  // ── Transcription (only for "playing elsewhere") ──
   const lyricsRef = useRef(lyrics)
-  useEffect(() => { lyricsRef.current = lyrics }, [lyrics])
+  lyricsRef.current = lyrics
   const activeRef = useRef(activeIndex)
-  useEffect(() => { activeRef.current = activeIndex }, [activeIndex])
-  const detectedRef = useRef(detected)
-  useEffect(() => { detectedRef.current = detected }, [detected])
-
-  const stopListening = useCallback(() => {
-    clearTimeout(loop.current)
-    capture.current?.stop()
-    capture.current = null
-    setListen(s => (s.kind === 'error' ? s : { kind: 'off' }))
-  }, [])
-  useEffect(() => () => { stopListening(); asr.current?.dispose() }, [stopListening])
-
-  const beginListening = async () => {
-    try {
-      asr.current = asr.current || new AsrClient()
-      // `?engine=whisper-base` forces the small model (handy when the GPU model misbehaves).
-      const forced = new URLSearchParams(window.location.search).get('engine') as EngineKind | null
-      const engine = forced && forced in ENGINE_INFO ? forced : await asr.current.pickEngine()
-      let consented = false
-      try { consented = localStorage.getItem(`slt:asrConsent:${engine}`) === '1' } catch { /* ignore */ }
-      if (consented) await loadEngine(engine)
-      else setListen({ kind: 'consent', engine })
-    } catch (e: any) {
-      setListen({ kind: 'error', message: e.message })
-    }
-  }
-
-  const loadEngine = async (engine: EngineKind) => {
-    try { localStorage.setItem(`slt:asrConsent:${engine}`, '1') } catch { /* ignore */ }
-    const client = asr.current!
-    setListen({ kind: 'loading', engine, loaded: 0, total: ENGINE_INFO[engine].downloadMb * 1e6 })
-    client.onProgress = (loaded, total) => setListen(s => (s.kind === 'loading' ? { ...s, loaded, total } : s))
-    client.onError = message => { stopListening(); setListen({ kind: 'error', message }) }
-    try {
-      await client.load(engine)
-      setListen({ kind: 'choose-source', engine })
-    } catch (e: any) {
-      if (engine !== 'whisper-base') {
-        // The GPU model couldn't start on this device: offer the small CPU model instead.
-        asr.current?.dispose()
-        asr.current = new AsrClient()
-        setListen({ kind: 'consent', engine: 'whisper-base' })
-        return
-      }
-      setListen({ kind: 'error', message: e.message })
-    }
-  }
-
-  const startCapture = async (engine: EngineKind, source: 'mic' | 'tab') => {
-    try {
-      const cap = new AudioCapture(WINDOW_S + 2)
-      await cap.start(source)
-      cap.onEnded = stopListening
-      capture.current = cap
-      setListen({ kind: 'listening', engine, phase: 'listening', heard: '', latencyMs: 0, match: null })
-      const tick = async () => {
-        const c = capture.current
-        if (!c) return
-        if (c.capturedSeconds >= MIN_AUDIO_S) {
-          const capturedAt = Date.now()
-          const lang = romanizableLanguage(detectedRef.current) || detectedRef.current.split('-')[0] || undefined
-          setListen(s => (s.kind === 'listening' ? { ...s, phase: 'transcribing' } : s))
-          const { text, ms } = await asr.current!.transcribe(c.latest(WINDOW_S), lang)
-          if (!capture.current) return
-          const match = text ? follow(text, capturedAt) : null
-          setListen(s => (s.kind === 'listening' ? { ...s, phase: 'listening', heard: text || s.heard, latencyMs: ms, match: match ?? s.match } : s))
-        }
-        loop.current = setTimeout(tick, 1500)
-      }
-      tick()
-    } catch (e: any) {
-      setListen({ kind: 'error', message: e.name === 'NotAllowedError' ? 'Permission to use audio was denied.' : e.message })
-    }
-  }
-
-  // Move the lyrics to where the transcript says we are.
-  const follow = (heard: string, capturedAt: number): MatchInfo => {
+  activeRef.current = activeIndex
+  const follow = useCallback((heard: string, capturedAt: number): MatchInfo => {
     const ls = lyricsRef.current
     const match = alignTranscript(ls, heard, activeRef.current)
     if (!match) return { kind: 'none' }
@@ -211,215 +188,153 @@ export default function ListenPage() {
       setFollowIndex(match.lineIndex)
       return { kind: 'line', line: match.lineIndex }
     }
-    // The window ends "now", so we're most likely near the end of the last line heard.
     const next = ls[match.lineIndex + 1]?.startTimeMs ?? line.startTimeMs + 4000
     const lineEnd = Math.min(next, line.startTimeMs + 6000)
     const estimate = line.startTimeMs + 0.75 * (lineEnd - line.startTimeMs) + (Date.now() - capturedAt)
-    const current = now()
+    const current = clockNow()
     if (!clock.current.playing || Math.abs(estimate - current) > 1500) {
       setClock(estimate, true)
       return { kind: 'moved', line: match.lineIndex, fromMs: current, toMs: estimate }
     }
     return { kind: 'confirmed', line: match.lineIndex }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const transcription = useTranscription(follow, () => romanizableLanguage(detected) || detected.split('-')[0] || undefined)
+
+  const switchMode = (next: Mode) => {
+    if (next === 'here') transcription.stop()
+    else { yt.pause(); setClock(positionMs, false) }
+    setMode(next)
   }
 
-  // ── Render ──
+  // First player visit: flip Romanization off and back on once so the control explains itself.
+  useEffect(() => {
+    if (!lyrics.length) return
+    try {
+      if (localStorage.getItem('slt:playerHintShown')) return
+      localStorage.setItem('slt:playerHintShown', '1')
+    } catch { return }
+    setHint(true)
+    const a = setTimeout(() => setRomanizationOn(false), 1200)
+    const b = setTimeout(() => setRomanizationOn(true), 2400)
+    const c = setTimeout(() => setHint(false), 3400)
+    return () => [a, b, c].forEach(clearTimeout)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lyrics.length > 0])
+
   const romanizeLang = romanizableLanguage(detected)
-  const durationMs = track ? Math.round(track.duration * 1000) : 0
+  const languageName = LANGUAGE_NAMES[detected.split('-')[0]]
+  const goBack = () => (window.history.length > 1 ? router.back() : router.push('/listen'))
 
-  const listenButton = track && (
-    listen.kind === 'listening' ? (
-      <button onClick={stopListening} title="Stop transcription" className="flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-black">
-        <Square className="h-3.5 w-3.5" fill="currentColor" /> Stop
-      </button>
-    ) : (
-      <button
-        onClick={beginListening}
-        disabled={listen.kind === 'loading'}
-        title={`${FEATURE_NAME} (beta)`}
-        className="flex h-9 items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 text-sm font-semibold hover:bg-white/20 disabled:opacity-60"
-      >
-        {listen.kind === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
-        <span className="hidden md:inline">{FEATURE_NAME}</span>
-        <span className="md:hidden">Transcribe</span>
-        <span className="rounded bg-white/15 px-1 text-[10px] font-bold uppercase tracking-wide">beta</span>
-      </button>
-    )
-  )
-
-  if (!track) {
+  if (loadError) {
     return (
-      <>
-        <Head><title>Listen · Spotify Lyrics Translator</title></Head>
-        <div className="min-h-[100dvh] bg-zinc-950 px-5 py-10 text-white sm:px-10">
-          <div className="mx-auto max-w-xl">
-            <h1 className="text-3xl font-extrabold">Sing along — no login</h1>
-            <p className="mt-2 text-white/60">Find a song, play it anywhere, and tap a line to sync.</p>
-            <label className="mt-6 flex items-center gap-2 rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10 focus-within:ring-white/40">
-              <Search className="h-5 w-5 text-white/50" />
-              <input
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="Song title and artist"
-                className="w-full bg-transparent text-lg outline-none placeholder:text-white/40"
-              />
-              {searching && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}
-            </label>
-            {searchError && <p className="mt-3 text-sm text-red-300">{searchError}</p>}
-            <ul className="mt-4 space-y-1">
-              {results?.map(r => (
-                <li key={r.id}>
-                  <button onClick={() => pick(r)} className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/10">
-                    <span className="min-w-0">
-                      <span className="block truncate font-semibold">{r.trackName}</span>
-                      <span className="block truncate text-sm text-white/55">{r.artistName}</span>
-                    </span>
-                    <span className="shrink-0 text-xs text-white/45">
-                      {r.syncedLyrics ? 'synced' : 'text only'} · {Math.floor(r.duration / 60)}:{String(Math.round(r.duration % 60)).padStart(2, '0')}
-                    </span>
-                  </button>
-                </li>
-              ))}
-              {results && results.length === 0 && !searching && <li className="px-3 py-2 text-white/50">No lyrics found. Try the song title plus the artist.</li>}
-            </ul>
-            <p className="mt-10 text-xs text-white/40">
-              Lyrics from <a className="underline" href="https://lrclib.net" target="_blank" rel="noreferrer">LRCLIB</a>.{' '}
-              <Link href="/demo" className="underline">Try the demo</Link> · <Link href="/" className="underline">Connect Spotify</Link>
-            </p>
+      <div className="grid min-h-[100dvh] place-items-center bg-zinc-950 px-6 text-center text-white">
+        <div>
+          <p className="text-lg">{loadError}</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <button onClick={() => window.location.reload()} className="rounded-full bg-white px-5 py-2 font-semibold text-black">Try again</button>
+            <Link href="/listen" className="rounded-full bg-white/10 px-5 py-2 font-semibold">Search another song</Link>
           </div>
         </div>
-      </>
+      </div>
     )
   }
+
+  const media = (
+    <div className="overflow-hidden rounded-2xl bg-black/50 ring-1 ring-white/10">
+      {here ? (
+        <>
+          <div className="relative aspect-video w-full bg-black">
+            <div ref={ytHost} className="absolute inset-0 [&>iframe]:h-full [&>iframe]:w-full" />
+            {(videoLookup === 'loading' || yt.status === 'loading') && (
+              <div className="absolute inset-0 grid place-items-center text-sm text-white/60"><Loader2 className="h-6 w-6 animate-spin" /></div>
+            )}
+            {yt.stalled && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 p-4 text-center text-sm">
+                <p>This recording won’t start here.</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {yt.hasNext && <button onClick={yt.next} className="rounded-full bg-white px-3 py-1.5 font-semibold text-black">Try another recording</button>}
+                  {yt.videoId && <a href={`https://www.youtube.com/watch?v=${yt.videoId}`} target="_blank" rel="noreferrer" className="rounded-full bg-white/15 px-3 py-1.5">Open on YouTube</a>}
+                  <button onClick={() => switchMode('elsewhere')} className="rounded-full bg-white/15 px-3 py-1.5">Play it elsewhere</button>
+                </div>
+              </div>
+            )}
+            {!yt.stalled && yt.status === 'ready' && !yt.isPlaying && yt.positionMs === 0 && (
+              <button onClick={yt.play} className="absolute inset-0 grid place-items-center bg-black/40 text-lg font-semibold">
+                <span className="rounded-full bg-white px-5 py-2 text-black">▶ Play song</span>
+              </button>
+            )}
+          </div>
+          <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs text-white/60">
+            <span className="flex items-center gap-1"><Youtube className="h-3.5 w-3.5" /> Playing here</span>
+            {synced && (
+              <span className="flex items-center gap-1" title="If the words come too early or too late">
+                Lyrics timing
+                <button aria-label="Show lyrics earlier" onClick={() => setOffsetMs(o => o + 300)} className="grid h-6 w-6 place-items-center rounded-full bg-white/10 hover:bg-white/20"><Minus className="h-3 w-3" /></button>
+                <span className="w-10 text-center tabular-nums">{offsetMs === 0 ? '0' : `${offsetMs > 0 ? '−' : '+'}${(Math.abs(offsetMs) / 1000).toFixed(1)}s`}</span>
+                <button aria-label="Show lyrics later" onClick={() => setOffsetMs(o => o - 300)} className="grid h-6 w-6 place-items-center rounded-full bg-white/10 hover:bg-white/20"><Plus className="h-3 w-3" /></button>
+              </span>
+            )}
+          </div>
+          <button onClick={() => switchMode('elsewhere')} className="flex w-full items-center gap-2 border-t border-white/10 px-3 py-2.5 text-left text-sm text-white/70 hover:bg-white/5">
+            <MonitorSpeaker className="h-4 w-4" /> Playing it on another device instead?
+          </button>
+        </>
+      ) : (
+        <div className="space-y-3 p-4">
+          <p className="flex items-center gap-2 font-semibold"><MonitorSpeaker className="h-4 w-4" /> Playing somewhere else</p>
+          <p className="text-sm text-white/70">
+            {videoLookup === 'failed' || ytFailed
+              ? 'We couldn’t find a recording to play here. Play the song on any app or speaker, then sync below.'
+              : 'Play the song on any app or speaker, then sync below.'}
+          </p>
+          <ol className="space-y-1 text-sm text-white/70">
+            <li>1. Press ▶ here the moment the song starts, <b>or</b></li>
+            <li>2. Tap the line that’s being sung, <b>or</b></li>
+            <li>3. Let this page listen:</li>
+          </ol>
+          <TranscriptionButton t={transcription} />
+          {videos.length > 0 && !ytFailed && (
+            <button onClick={() => switchMode('here')} className="w-full rounded-full px-4 py-2 text-sm text-white/70 hover:bg-white/10">
+              ← Play it on this page instead
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <>
-      <Head><title>{track.trackName} · Listen</title></Head>
+      <Head><title>{track ? `${track.trackName} · Lyrics Translator` : 'Lyrics Translator'}</title></Head>
       <PlayerShell
-        track={{ title: track.trackName, artist: track.artistName }}
-        status={[LANGUAGE_NAMES[detected.split('-')[0]] && `Lyrics in ${LANGUAGE_NAMES[detected.split('-')[0]]}`, listen.kind === 'listening' ? 'Transcribing on this device' : synced ? 'Tap a line when it’s sung to sync' : ''].filter(Boolean).join(' · ')}
-        headerRight={
-          <div className="flex items-center gap-2">
-            {listenButton}
-            <button onClick={() => { stopListening(); setTrack(null) }} className="h-9 rounded-full px-3 text-sm text-white/70 hover:bg-white/10">Change song</button>
-          </div>
-        }
-        progress={synced ? { positionMs, durationMs, onSeek: ms => setClock(ms) } : undefined}
-        playback={synced ? { isPlaying, onToggle: () => setClock(now(), !clock.current.playing) } : undefined}
-        romanization={{ enabled: romanizationOn, available: Boolean(romanizeLang), onChange: setRomanizationOn }}
+        back={{ onClick: goBack, label: 'Back to search' }}
+        track={track ? { title: track.trackName, artist: track.artistName } : { title: 'Loading…', artist: '' }}
+        status={[languageName && `Lyrics in ${languageName}`, !synced && lyrics.length ? 'Text only (not time-synced)' : ''].filter(Boolean).join(' · ')}
+        media={media}
+        progress={synced || here ? { positionMs, durationMs, onSeek: seek } : undefined}
+        playback={synced || here ? { isPlaying, onToggle: toggle } : undefined}
+        romanization={{ enabled: romanizationOn, available: Boolean(romanizeLang), onChange: setRomanizationOn, highlight: hint }}
         translation={{ enabled: translationOn, onChange: setTranslationOn, target, targets: TARGET_LANGUAGES, onTarget: setTarget }}
-        footerNote={
-          listen.kind === 'error' ? <span className="text-red-300">{listen.message}</span>
-          : undefined
-        }
+        footerNote={transcription.state.kind === 'error' ? <span className="text-red-300">{transcription.state.message}</span> : undefined}
       >
-        {listen.kind === 'listening' && (
-          <TranscriptionPanel state={listen} capture={capture} lyrics={lyrics} />
+        <TranscriptionPanel t={transcription} lyrics={lyrics} />
+        {lyrics.length ? (
+          <LyricsView
+            className="flex-1"
+            lyrics={lyrics}
+            activeIndex={activeIndex}
+            markedIndex={transcription.state.kind === 'listening' ? heardIndex : -1}
+            positionMs={synced ? positionMs : -1}
+            romanizeFrom={romanizationOn ? romanizeLang : null}
+            showTranslation={translationOn}
+            onSeek={seek}
+          />
+        ) : (
+          <div className="grid flex-1 place-items-center"><Loader2 className="h-6 w-6 animate-spin text-white/60" /></div>
         )}
-        <LyricsView
-          className="flex-1"
-          markedIndex={listen.kind === 'listening' ? heardIndex : -1}
-          lyrics={lyrics}
-          activeIndex={activeIndex}
-          positionMs={synced ? positionMs : -1}
-          romanizeFrom={romanizationOn ? romanizeLang : null}
-          showTranslation={translationOn}
-          onSeek={syncToLine}
-        />
       </PlayerShell>
-
-      {(listen.kind === 'consent' || listen.kind === 'loading' || listen.kind === 'choose-source') && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl bg-zinc-900 p-6 text-white shadow-2xl ring-1 ring-white/10">
-            <h2 className="text-xl font-bold">{FEATURE_NAME} <span className="align-middle text-xs font-bold uppercase text-white/50">beta</span></h2>
-            {listen.kind === 'consent' && (
-              <>
-                <ul className="mt-3 space-y-2 text-sm text-white/75">
-                  <li>• Downloads a speech model once — <b>{ENGINE_INFO[listen.engine].label}, about {formatMb(ENGINE_INFO[listen.engine].downloadMb)}</b> — and runs it on this device.</li>
-                  <li>• Listens through your mic or a shared tab. Audio stays in memory: never uploaded, never saved.</li>
-                  <li>• Use it only with music you’re allowed to play.</li>
-                </ul>
-                <div className="mt-5 flex justify-end gap-2">
-                  <button onClick={() => setListen({ kind: 'off' })} className="rounded-full px-4 py-2 text-sm text-white/70 hover:bg-white/10">Not now</button>
-                  <button onClick={() => loadEngine(listen.engine)} className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-black">Download & continue</button>
-                </div>
-              </>
-            )}
-            {listen.kind === 'loading' && (
-              <div className="mt-4">
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/15">
-                  <div className="h-full bg-white transition-[width]" style={{ width: `${Math.min(100, (listen.loaded / Math.max(listen.total, 1)) * 100)}%` }} />
-                </div>
-                <p className="mt-2 text-sm tabular-nums text-white/60">
-                  {formatMb(listen.loaded / 1e6)} / {formatMb(listen.total / 1e6)} · saved for next time
-                </p>
-              </div>
-            )}
-            {listen.kind === 'choose-source' && (
-              <>
-                <p className="mt-2 text-sm text-white/65">Where is the music playing?</p>
-                <div className="mt-4 grid gap-2">
-                  <button onClick={() => startCapture(listen.engine, 'mic')} className="rounded-2xl bg-white/10 px-4 py-3 text-left hover:bg-white/15">
-                    <b>Speakers nearby</b><span className="block text-sm text-white/55">Listen with the microphone</span>
-                  </button>
-                  <button onClick={() => startCapture(listen.engine, 'tab')} className="rounded-2xl bg-white/10 px-4 py-3 text-left hover:bg-white/15">
-                    <b>Another browser tab</b><span className="block text-sm text-white/55">Share the tab and turn on “Share tab audio”</span>
-                  </button>
-                </div>
-                <button onClick={stopListening} className="mt-3 w-full rounded-full py-2 text-sm text-white/60 hover:bg-white/10">Cancel</button>
-              </>
-            )}
-          </div>
-        </div>
-      )}
+      <TranscriptionDialog t={transcription} />
     </>
   )
-}
-
-// Live view of what the local model hears and what it did — so it's obvious the feature is working.
-function TranscriptionPanel({ state, capture, lyrics }: {
-  state: Extract<ListenState, { kind: 'listening' }>
-  capture: React.MutableRefObject<AudioCapture | null>
-  lyrics: Lyric[]
-}) {
-  const [level, setLevel] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setLevel(capture.current?.level() ?? 0), 100)
-    return () => clearInterval(id)
-  }, [capture])
-
-  const m = state.match
-  const lineText = (i: number) => `“${(lyrics[i]?.original || '').slice(0, 40)}${(lyrics[i]?.original || '').length > 40 ? '…' : ''}”`
-  const result =
-    !m ? (state.heard ? '' : 'Waiting for singing…')
-    : m.kind === 'moved' ? `Jumped ${fmtDelta(m.toMs - m.fromMs)} to line ${m.line + 1} ${lineText(m.line)}`
-    : m.kind === 'confirmed' ? `In sync at line ${m.line + 1} ${lineText(m.line)}`
-    : m.kind === 'line' ? `Highlighted line ${m.line + 1} ${lineText(m.line)}`
-    : 'Heard something, but it doesn’t match these lyrics yet'
-
-  return (
-    <div className="mt-3 rounded-2xl bg-black/35 px-4 py-3 ring-1 ring-white/10 backdrop-blur" aria-live="polite">
-      <div className="flex items-center gap-3 text-xs text-white/60">
-        <div className="flex h-4 items-end gap-0.5" aria-label="Input level">
-          {[0.15, 0.35, 0.55, 0.75, 0.9].map(t => (
-            <span key={t} className="w-1 rounded-full bg-white transition-[height,opacity] duration-100" style={{ height: `${level > t ? 100 : 25}%`, opacity: level > t ? 0.95 : 0.3 }} />
-          ))}
-        </div>
-        <span className="font-semibold text-white/80">{state.phase === 'transcribing' ? 'Transcribing last 8 s…' : 'Listening'}</span>
-        <span className="ml-auto truncate">{ENGINE_INFO[state.engine].label}{state.latencyMs ? ` · ${(state.latencyMs / 1000).toFixed(1)} s` : ''}</span>
-      </div>
-      <p className="mt-2 line-clamp-2 min-h-[1.5em] text-base italic text-white/90">{state.heard ? `“${state.heard}”` : '…'}</p>
-      {result && <p className={`mt-1 truncate text-xs ${m?.kind === 'none' ? 'text-amber-200/80' : 'text-emerald-200/90'}`}>{result}</p>}
-    </div>
-  )
-}
-
-function fmtDelta(ms: number) {
-  const s = Math.round(ms / 1000)
-  return `${s >= 0 ? '+' : '−'}${Math.abs(s)} s`
-}
-
-function formatMb(mb: number) {
-  return mb >= 1000 ? `${(mb / 1000).toFixed(2)} GB` : `${Math.round(mb)} MB`
 }

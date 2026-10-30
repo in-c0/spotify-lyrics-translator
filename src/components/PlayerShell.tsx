@@ -2,7 +2,8 @@
 // Full-screen sing-along layout shared by the Spotify view, /demo and /listen:
 // blurred artwork backdrop, track header, lyrics in the middle, compact controls at the bottom.
 import React from 'react'
-import { Languages, Pause, Play, SkipBack, SkipForward, Subtitles } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, Languages, Pause, Play, SkipBack, SkipForward, Subtitles } from 'lucide-react'
 
 export interface ShellTrack {
   title: string
@@ -19,6 +20,12 @@ export interface TargetLanguage {
 
 interface PlayerShellProps {
   track: ShellTrack | null
+  /** Where the ← button goes (or a handler). Omit to hide it. */
+  back?: { href?: string; onClick?: () => void; label?: string }
+  /** Video/player shown beside the lyrics on wide screens and above them on phones. */
+  media?: React.ReactNode
+  /** Short banner above the lyrics (e.g. how to sync when the song plays elsewhere). */
+  notice?: React.ReactNode
   headerRight?: React.ReactNode
   /** Extra line under the artist (e.g. "Romanizing from Korean"). */
   status?: React.ReactNode
@@ -47,7 +54,8 @@ export default function PlayerShell(props: PlayerShellProps) {
       </div>
 
       {/* Header */}
-      <header className="relative z-10 flex items-center gap-4 px-5 pt-5 sm:px-10 sm:pt-8">
+      <header className="relative z-10 flex items-center gap-3 px-5 pt-5 sm:gap-4 sm:px-10 sm:pt-8">
+        {props.back && <BackButton {...props.back} />}
         <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg shadow-lg ring-1 ring-white/10" style={!track?.art ? { background: `linear-gradient(135deg, ${c1}, ${c2})` } : undefined}>
           {track?.art && <img src={track.art} alt="" className="h-full w-full object-cover" />}
         </div>
@@ -59,13 +67,17 @@ export default function PlayerShell(props: PlayerShellProps) {
         {props.headerRight}
       </header>
 
-      {/* Lyrics */}
-      <main className="relative z-10 mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-5 sm:px-10">
-        {props.children}
-      </main>
+      {/* Lyrics (+ player) */}
+      <div className={`relative z-10 mx-auto flex min-h-0 w-full flex-1 flex-col gap-4 px-5 sm:px-10 ${props.media ? 'max-w-6xl lg:flex-row-reverse lg:items-start lg:gap-10 lg:pt-6' : 'max-w-3xl'}`}>
+        {props.media && <aside className="mt-3 w-full shrink-0 lg:mt-0 lg:w-[380px]">{props.media}</aside>}
+        <main className="flex min-h-0 w-full flex-1 flex-col self-stretch">
+          {props.notice && <div className="mt-3 rounded-2xl bg-white/10 px-4 py-3 text-sm text-white/85 ring-1 ring-white/10">{props.notice}</div>}
+          {props.children}
+        </main>
+      </div>
 
       {/* Controls */}
-      <footer className="relative z-10 mx-auto w-full max-w-3xl px-5 pb-5 sm:px-10 sm:pb-8">
+      <footer className={`relative z-10 mx-auto w-full px-5 pb-5 sm:px-10 sm:pb-8 ${props.media ? 'max-w-6xl' : 'max-w-3xl'}`}>
         {progress && progress.durationMs > 0 && <ProgressBar {...progress} />}
         <div className="mt-3 flex items-center justify-between gap-3">
           <div className="flex items-center gap-1">
@@ -108,6 +120,16 @@ export default function PlayerShell(props: PlayerShellProps) {
         {props.footerNote && <div className="mt-3 text-center text-xs text-white/45">{props.footerNote}</div>}
       </footer>
     </div>
+  )
+}
+
+function BackButton({ href, onClick, label = 'Back' }: { href?: string; onClick?: () => void; label?: string }) {
+  const cls = 'grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20'
+  const icon = <ArrowLeft className="h-5 w-5" />
+  return href ? (
+    <Link href={href} aria-label={label} title={label} className={cls}>{icon}</Link>
+  ) : (
+    <button onClick={onClick} aria-label={label} title={label} className={cls}>{icon}</button>
   )
 }
 

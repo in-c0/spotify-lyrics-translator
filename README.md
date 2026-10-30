@@ -11,7 +11,7 @@
     <img src="docs/demo.gif" alt="Live demo: Korean lyrics shown with Latin romanization and English translation, time-synced to a Spotify track" width="600" />
   </a>
 
-  <strong><a href="https://spotify-lyrics-translator.netlify.app/demo">▶ Try the live demo</a></strong> — no account, no install<br />
+  <strong><a href="https://spotify-lyrics-translator.netlify.app">▶ Try it live</a></strong> — search a song, no account needed<br />
   <sub><a href="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb">watch the full-length video</a></sub>
 
   <br />
@@ -45,18 +45,22 @@
 
   <br />
 
-### 🎧 No-login mode (`/listen`)
-Don't want to set up a Spotify app? Open `/listen`, search a song (lyrics from LRCLIB), play it anywhere, and either:
-- **tap a line** when it's sung to sync the timeline, or
-- **Local song lyrics transcription (beta)** — after a one-time consent, the page downloads a speech model and runs it **locally in your browser**. It listens through your mic or a shared tab, shows a live transcript of what it hears, marks the lyric line it matched, and moves the lyrics there. Audio stays in memory: never uploaded, never saved.
+### How to use it
 
-| Device | Model | One-time download |
-| --- | --- | --- |
-| WebGPU with fp16 (most recent Chrome/Edge on Mac & Windows) | [Qwen3-ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), q4f16 ([ONNX export](https://huggingface.co/jiangzhuo9357/Qwen3-ASR-0.6B-ONNX)) | ~0.9 GB |
-| WebGPU without fp16 | Qwen3-ASR 0.6B, q4 | ~1.3 GB |
-| No WebGPU | Whisper base (transformers.js) | ~55 MB |
+**No account needed** — open the site, search a song, and it plays right on the page (via YouTube) while the lyrics follow it line by line:
 
-Qwen3-ASR (Apache-2.0, 2026) is the open model with the strongest published results on sung vocals and full songs with backing music. Listening only needs to recognise *roughly* what's being sung to find the line, so it works even when the transcript isn't perfect.
+| Layer | Example |
+| --- | --- |
+| Original | 아리랑 고개로 넘어간다 |
+| How to say it (romanization) | arirang gogaero neomeoganda |
+| What it means (translation) | Crossing over the Arirang pass |
+
+- Tap any line to jump there. The ← button (or your browser's back) returns to search.
+- If the words come slightly early or late, nudge **Lyrics timing** under the player.
+
+**Music playing on another device?** In the player choose *Playing it on another device instead?*, then sync by pressing ▶ when the song starts, tapping the line being sung, or **Local song lyrics transcription (beta)** — the page listens through your mic and finds the line. It always tells you the download size and asks first; the speech model (Qwen3-ASR 0.6B on WebGPU, ~0.9–1.3 GB, or Whisper base, ~55 MB) runs entirely in your browser and audio is never uploaded.
+
+**Using Spotify?** Connect it and the lyrics follow whatever you play in Spotify on any device (needs the Spotify app keys below; during Spotify's beta rules only accounts the app owner adds can sign in).
 
 > Only use listening with music you're allowed to play. Nothing is recorded, but check the terms of the service you're streaming from.
 
