@@ -42,13 +42,11 @@ export async function translateLines(lines: string[], target: string): Promise<{
       body: JSON.stringify({ text: lines, sourceLang: 'auto', targetLang: target }),
     })
     if (response.ok) translations = (await response.json()).translations
-    else if (response.status !== 404 && response.status !== 405) {
-      const data = await response.json().catch(() => ({}))
-      throw new Error(data.error || 'Failed to translate lyrics.')
-    }
-  } catch (e) {
-    if (e instanceof Error && e.message !== 'Failed to fetch' && !/JSON|Unexpected token/.test(e.message)) throw e
+  } catch {
+    /* static hosting or offline server: fall through */
   }
+  // The server route can be missing (static hosting) or rate-limited (shared cloud IPs get
+  // throttled by the free translator), so translate straight from the browser instead.
   if (!translations) translations = await translateFree(lines, 'auto', target)
   return { lines: translations.map(t => t?.translatedText || ''), detected: majorityLanguage(translations) }
 }
