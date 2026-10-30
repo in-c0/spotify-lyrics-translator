@@ -6,14 +6,15 @@ import { useRouter } from 'next/router'
 // Define the shape of your session context
 interface SessionContextProps {
   accessToken: string | null
-  refreshAccessToken: () => Promise<void>
+  /** Refreshes the access token and resolves to the new one (or null if logged out). */
+  refreshAccessToken: () => Promise<string | null>
   logout: () => void
   isLoggedIn: boolean
 }
 
 const SessionContext = createContext<SessionContextProps>({
   accessToken: null,
-  refreshAccessToken: async () => {},
+  refreshAccessToken: async () => null,
   logout: () => {},
   isLoggedIn: false,
 })
@@ -29,12 +30,12 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     const storedAccessToken = localStorage.getItem('access_token')
     const storedRefreshToken = localStorage.getItem('refresh_token')
-    const storedExpiresIn = localStorage.getItem('expires_in')
+    // `expires_at` is an absolute timestamp, so a reload an hour later knows the token is stale.
+    const storedExpiresAt = Number(localStorage.getItem('expires_at'))
 
-    if (storedAccessToken && storedRefreshToken && storedExpiresIn) {
+    if (storedAccessToken && storedRefreshToken) {
       setAccessToken(storedAccessToken)
-      const expiresIn = parseInt(storedExpiresIn)
-      setExpiresAt(Date.now() + expiresIn * 1000)
+      setExpiresAt(storedExpiresAt || Date.now()) // unknown expiry (old sessions) -> refresh now
     }
   }, [])
 
@@ -57,11 +58,11 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [expiresAt])
 
   // Function to refresh the access token
-  const refreshAccessToken = async () => {
+  const refreshAccessToken = async (): Promise<string | null> => {
     const refreshToken = localStorage.getItem('refresh_token')
     if (!refreshToken) {
       logout()
-      return
+      return null
     }
 
     try {
@@ -80,16 +81,21 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await response.json()
 
       if (data.access_token) {
+        const newExpiresAt = Date.now() + data.expires_in * 1000
         setAccessToken(data.access_token)
         localStorage.setItem('access_token', data.access_token)
-        const expiresIn = data.expires_in
-        setExpiresAt(Date.now() + expiresIn * 1000)
+        localStorage.setItem('expires_at', String(newExpiresAt))
+        // Spotify may rotate the refresh token; keep the newest one.
+        if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
+        setExpiresAt(newExpiresAt)
+        return data.access_token
       } else {
         throw new Error('No access token returned')
       }
     } catch (error) {
       console.error('Error refreshing access token:', error)
       logout()
+      return null
     }
   }
 
@@ -99,6 +105,7 @@ export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ child
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
     localStorage.removeItem('expires_in')
+    localStorage.removeItem('expires_at')
     router.push('/login')
   }
 

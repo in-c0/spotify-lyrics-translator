@@ -3,8 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request:
-    branches: [main]
+  pull_request: # any base branch, so stacked PRs are checked too
 
 jobs:
   build:
@@ -15,7 +14,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -23,6 +22,12 @@ jobs:
 
       - name: Type-check
         run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Dependency audit (runtime deps)
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Build
         run: npm run build

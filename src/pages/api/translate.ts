@@ -1,7 +1,6 @@
 // pages/api/translate.ts
 
 import type { NextApiRequest, NextApiResponse } from 'next'
-import freeTranslate from '@iamtraction/google-translate'
 
 interface TranslateRequestBody {
   text: string[] // Array of lyric lines
@@ -18,35 +17,66 @@ interface TranslateResponse {
   translations: Translation[]
 }
 
-/**
- * Free path — no API key, no credit card required.
- * Uses the community `@iamtraction/google-translate` library (already a dependency).
- * This is the DEFAULT so the app works out-of-the-box with only Spotify credentials.
- * Note: unofficial and rate-limited; fine for a local hobby setup, not production scale.
- */
-async function translateFree(
-  text: string[],
-  sourceLang: string,
-  targetLang: string
-): Promise<Translation[]> {
-  const options: { to: string; from?: string } = { to: targetLang }
-  if (sourceLang !== 'auto') {
-    options.from = sourceLang
-  }
+const FREE_ENDPOINT = 'https://translate.googleapis.com/translate_a/single'
+const MAX_CHUNK_CHARS = 4000
+const MAX_LINES = 400
+const MAX_LINE_CHARS = 500
 
-  return Promise.all(
-    text.map(async (line) => {
-      // Preserve blank lines (instrumental breaks etc.) without a network round-trip.
-      if (!line.trim()) {
-        return { translatedText: line, detectedSourceLanguage: sourceLang }
-      }
-      const result = await freeTranslate(line, options)
-      return {
-        translatedText: result.text,
-        detectedSourceLanguage: result.from?.language?.iso || sourceLang,
-      }
-    })
-  )
+/**
+ * Free path — no API key, no credit card required (the DEFAULT).
+ * Uses Google's public web endpoint. Lines are joined with newlines and sent in a few
+ * chunked requests instead of one request per line, which keeps us well under its rate limits.
+ * Unofficial: fine for a local hobby setup, not production scale.
+ */
+async function translateFree(text: string[], sourceLang: string, targetLang: string): Promise<Translation[]> {
+  const results: Translation[] = new Array(text.length)
+  for (const chunk of chunkLines(text)) {
+    const { lines, detected } = await freeRequest(chunk.map(i => text[i]), sourceLang, targetLang)
+    if (lines.length === chunk.length) {
+      chunk.forEach((lineIndex, j) => {
+        results[lineIndex] = { translatedText: lines[j], detectedSourceLanguage: detected }
+      })
+      continue
+    }
+    // Line count drifted (rare) — fall back to translating this chunk line by line.
+    for (const lineIndex of chunk) {
+      const single = await freeRequest([text[lineIndex]], sourceLang, targetLang)
+      results[lineIndex] = { translatedText: single.lines.join(' '), detectedSourceLanguage: single.detected }
+    }
+  }
+  return results
+}
+
+/** Groups line indexes so that each newline-joined chunk stays under MAX_CHUNK_CHARS. */
+function chunkLines(text: string[]): number[][] {
+  const chunks: number[][] = []
+  let current: number[] = []
+  let size = 0
+  text.forEach((line, i) => {
+    if (current.length > 0 && size + line.length + 1 > MAX_CHUNK_CHARS) {
+      chunks.push(current)
+      current = []
+      size = 0
+    }
+    current.push(i)
+    size += line.length + 1
+  })
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
+
+async function freeRequest(lines: string[], sourceLang: string, targetLang: string) {
+  const params = new URLSearchParams({ client: 'gtx', sl: sourceLang, tl: targetLang, dt: 't' })
+  const response = await fetch(`${FREE_ENDPOINT}?${params}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+    body: new URLSearchParams({ q: lines.join('\n') }),
+  })
+  if (response.status === 429) throw new Error('The free translator is rate-limiting requests. Wait a minute and try again.')
+  if (!response.ok) throw new Error(`Free translator responded with ${response.status}`)
+  const data = await response.json()
+  const joined: string = (data?.[0] || []).map((segment: any[]) => segment?.[0] || '').join('')
+  return { lines: joined.split('\n'), detected: typeof data?.[2] === 'string' ? data[2] : sourceLang }
 }
 
 /**
@@ -60,6 +90,13 @@ async function translatePaid(
   apiKey: string
 ): Promise<Translation[]> {
   const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`
+
+  if (text.length > 128) {
+    // The v2 API accepts at most 128 segments per request.
+    const head = await translatePaid(text.slice(0, 128), sourceLang, targetLang, apiKey)
+    const tail = await translatePaid(text.slice(128), sourceLang, targetLang, apiKey)
+    return [...head, ...tail]
+  }
 
   const payload: Record<string, unknown> = {
     q: text,
@@ -97,6 +134,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!text || !Array.isArray(text) || !sourceLang || !targetLang) {
     return res.status(400).json({ error: 'Invalid request body.' })
+  }
+  if (text.length > MAX_LINES || text.some(line => typeof line !== 'string' || line.length > MAX_LINE_CHARS)) {
+    return res.status(413).json({ error: `Send at most ${MAX_LINES} lines of up to ${MAX_LINE_CHARS} characters.` })
+  }
+  if (!/^[a-z]{2,3}(-[A-Za-z]{2,4})?$|^auto$/.test(sourceLang) || !/^[a-z]{2,3}(-[A-Za-z]{2,4})?$/.test(targetLang)) {
+    return res.status(400).json({ error: 'Invalid language code.' })
   }
 
   try {
