@@ -40,7 +40,7 @@ interface UserProfile {
 
 interface EnhancedLyricsTranslatorProps {
   accessToken: string | null
-  refreshToken: () => Promise<void>
+  refreshToken: () => Promise<string | null>
   onLogout: () => void
 }
 
@@ -164,39 +164,18 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     setRubyText(false)
   }
 
-  // Function to refresh access token
-  const onTokenRefresh = useCallback(async () => {
-    await refreshToken()
-  }, [refreshToken])
-
-  // Fetch with token, retry once on 401
+  // Fetch with token; on 401 refresh once and retry with the *new* token.
   const fetchWithToken = useCallback(
-    async (url: string, options: RequestInit = {}, retry = true) => {
-      console.log('Fetching:', url)
-      try {
-        const response = await fetch(url, {
-          ...options,
-          headers: {
-            ...options.headers,
-            'Authorization': `Bearer ${accessToken}`,
-          },
-        })
+    async (url: string, options: RequestInit = {}) => {
+      const send = (token: string | null) =>
+        fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${token}` } })
 
-        if (response.status === 401 && retry) {
-          console.log('Token expired, refreshing token...')
-          await onTokenRefresh()
-
-          // Retry the request with the refreshed token
-          return fetchWithToken(url, options, false) // Pass `retry = false` to avoid infinite loop
-        }
-
-        return response
-      } catch (error) {
-        console.error('Fetch error:', error)
-        throw error
-      }
+      const response = await send(accessToken)
+      if (response.status !== 401) return response
+      const freshToken = await refreshToken()
+      return freshToken ? send(freshToken) : response
     },
-    [accessToken, onTokenRefresh]
+    [accessToken, refreshToken]
   )
 
   // Latest lyrics, readable from async callbacks without re-subscribing effects.

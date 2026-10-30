@@ -13,11 +13,14 @@ export default function LoginPage() {
 
   const handleLogin = () => {
     const redirectUri = process.env.NEXT_PUBLIC_SPOTIFY_REDIRECT_URI || DEFAULT_REDIRECT_URI
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('')
+    sessionStorage.setItem('spotify_auth_state', state)
     const params = new URLSearchParams({
       client_id: clientId!,
       response_type: 'code',
       redirect_uri: redirectUri,
       scope: SCOPES,
+      state,
     })
     window.location.href = `https://accounts.spotify.com/authorize?${params}`
   }

@@ -2,12 +2,11 @@
   "name": "spotify-lyrics-translator",
   "version": "1.0.0",
   "description": "AI translates lyrics into other languages!",
-  "main": "main.js",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
     "build": "next build",
     "start": "next start -H 127.0.0.1",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --test --experimental-strip-types tests/*.test.ts"
   },
   "repository": {
     "type": "git",
@@ -20,14 +19,12 @@
     "AI"
   ],
   "author": "in-c0",
-  "license": "ISC",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/in-c0/spotify-lyrics-translator/issues"
   },
   "homepage": "https://github.com/in-c0/spotify-lyrics-translator#readme",
   "dependencies": {
-    "@google-cloud/translate": "^8.5.0",
-    "@iamtraction/google-translate": "^2.0.1",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.2",
     "@radix-ui/react-dropdown-menu": "^2.1.2",
@@ -38,19 +35,15 @@
     "@radix-ui/react-slot": "^1.1.0",
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.1",
-    "@romanize/korean": "^0.1.1",
-    "any-ascii": "^0.3.2",
+    "@romanize/korean": "0.1.1",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
-    "cyrillic-to-translit-js": "^3.2.1",
-    "lodash.debounce": "^4.0.8",
     "lucide-react": "^0.453.0",
-    "next": "^14.2.15",
+    "next": "^15.5.28",
     "node-cache": "^5.1.2",
     "pinyin-pro": "^3.25.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.27.0",
     "tailwind-merge": "^2.5.4",
     "tailwindcss-animate": "^1.0.7",
     "wanakana": "^5.3.1"
@@ -59,10 +52,14 @@
     "@types/node": "22.7.6",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
-    "@types/react-router-dom": "^5.3.3",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
+    "postcss": "^8.5.32",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "$postcss"
+    }
   }
 }

@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
     "baseUrl": "./",
-    "paths": {        
-      "@/components/*": ["src/components/*"],
-      "@/lib/*": ["src/lib/*"]
+    "paths": {
+      "@/components/*": [
+        "src/components/*"
+      ],
+      "@/lib/*": [
+        "src/lib/*"
+      ]
     },
     "lib": [
       "dom",
@@ -14,6 +18,7 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "incremental": true,
     "module": "esnext",
     "esModuleInterop": true,
@@ -26,7 +31,8 @@
         "name": "next"
       }
     ],
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "target": "ES2017"
   },
   "include": [
     "next-env.d.ts",
