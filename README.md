@@ -11,7 +11,8 @@
     <img src="docs/demo.gif" alt="Live demo: Korean lyrics shown with Latin romanization and English translation, time-synced to a Spotify track" width="600" />
   </a>
 
-  <sub><a href="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb">▶ watch the full-length video</a></sub>
+  <strong><a href="https://spotify-lyrics-translator.netlify.app/demo">▶ Try the live demo</a></strong> — no account, no install<br />
+  <sub><a href="https://github.com/user-attachments/assets/6641e419-d5ef-46e9-ab17-1f446f373dfb">watch the full-length video</a></sub>
 
   <br />
 
