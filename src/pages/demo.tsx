@@ -113,6 +113,8 @@ export default function DemoPage() {
         translation={{ enabled: translationOn, onChange: setTranslationOn, target, targets: TARGET_LANGUAGES, onTarget: setTarget }}
         footerNote={
           <span>
+            <Link href="/listen" className="underline underline-offset-2 hover:text-white">Try your own song — no login</Link>
+            {' · '}
             <Link href="/" className="underline underline-offset-2 hover:text-white">Connect Spotify</Link>
           </span>
         }
