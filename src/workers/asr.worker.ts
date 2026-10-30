@@ -35,15 +35,24 @@ export type WorkerResponse =
 const post = (msg: WorkerResponse) => self.postMessage(msg)
 
 // ── Files: download once with progress, then serve from Cache Storage ──
+const memoryFallback = new Map<string, Blob>() // used only when Cache Storage is unavailable
+
+async function loadCached(url: string): Promise<Response> {
+  const cache = await caches.open(CACHE).catch(() => null)
+  const hit = cache ? await cache.match(url) : undefined
+  if (hit) return hit
+  const blob = memoryFallback.get(url)
+  if (blob) return new Response(blob)
+  throw new Error(`Missing model file ${url}`)
+}
+
 async function fetchFiles(base: string, files: { name: string; size: number }[]) {
   const total = files.reduce((n, f) => n + f.size, 0)
   let loaded = 0
   const cache = await caches.open(CACHE).catch(() => null)
-  const out: Record<string, ArrayBuffer> = {}
   for (const { name, size } of files) {
     const url = `${base}/${name}`
-    let response = cache ? await cache.match(url) : undefined
-    if (!response) {
+    if (!(cache && (await cache.match(url)))) {
       const net = await fetch(url)
       if (!net.ok || !net.body) throw new Error(`Download failed for ${name} (${net.status})`)
       const reader = net.body.getReader()
@@ -56,15 +65,14 @@ async function fetchFiles(base: string, files: { name: string; size: number }[])
         got += value.length
         post({ type: 'progress', loaded: loaded + got, total, file: name })
       }
-      const blob = new Blob(chunks as BlobPart[])
-      response = new Response(blob)
-      await cache?.put(url, response.clone()).catch(() => { /* quota: keep going without caching */ })
+      const blob = new Blob(chunks as BlobPart[]) // Blobs can live outside the JS heap
+      chunks.length = 0
+      const stored = cache ? await cache.put(url, new Response(blob)).then(() => true, () => false) : false
+      if (!stored) memoryFallback.set(url, blob) // quota or no Cache Storage: keep for this session
     }
-    out[name] = await response.arrayBuffer()
     loaded += size
     post({ type: 'progress', loaded, total, file: name })
   }
-  return out
 }
 
 // ── fp16 helpers (q4f16 graphs use half-precision I/O) ──
@@ -119,38 +127,50 @@ async function loadQwen(engine: 'qwen3-q4f16' | 'qwen3-q4', base: string) {
   const init = half ? 'decoder_init.q4f16.onnx' : 'decoder_init.int4.onnx'
   const step = half ? 'decoder_step.q4f16.onnx' : 'decoder_step.int4.onnx'
   const weights = half ? 'decoder_weights.q4f16.data' : 'decoder_weights.int4.data'
-  const files = await fetchFiles(base, [
-    { name: 'prompt_config.json', size: 2578 },
-    { name: 'mel_filters.json', size: 132427 },
-    { name: 'tokenizer.json', size: 11429377 },
-    { name: 'embed_scales.f32.bin', size: 607744 },
-    { name: 'embed_tokens.int8.bin', size: 155582464 },
-    { name: init, size: half ? 348427 : 353078 },
-    { name: step, size: half ? 350380 : 354803 },
-    { name: weights, size: half ? 344670208 : 382035968 },
-    { name: enc, size: half ? 376261247 : 745766355 },
-  ])
-  const json = (name: string) => JSON.parse(new TextDecoder().decode(files[name]))
-  const config = json('prompt_config.json')
-  const tokenizer = json('tokenizer.json')
+  // Download everything first (so progress covers the whole set), then build sessions one by one,
+  // dropping each buffer as soon as onnxruntime has copied it, to keep peak memory down.
+  const sizes: [string, number][] = [
+    ['prompt_config.json', 2578],
+    ['mel_filters.json', 132427],
+    ['tokenizer.json', 11429377],
+    ['embed_scales.f32.bin', 607744],
+    ['embed_tokens.int8.bin', 155582464],
+    [init, half ? 348427 : 353078],
+    [step, half ? 350380 : 354803],
+    [weights, half ? 344670208 : 382035968],
+    [enc, half ? 376261247 : 745766355],
+  ]
+  await fetchFiles(base, sizes.map(([name, size]) => ({ name, size })))
+  const read = async (name: string) => (await loadCached(`${base}/${name}`)).arrayBuffer()
+  const json = async (name: string) => JSON.parse(new TextDecoder().decode(await read(name)))
+
+  const config = await json('prompt_config.json')
+  const tokenizer = await json('tokenizer.json')
   const idToToken: string[] = []
   for (const [t, i] of Object.entries(tokenizer.model.vocab)) idToToken[i as number] = t
   for (const a of tokenizer.added_tokens) idToToken[a.id] = a.content
 
   const options = { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' }
-  const external = [{ path: weights, data: new Uint8Array(files[weights]) }]
   const kvOnGpu = { present_keys: 'gpu-buffer', present_values: 'gpu-buffer' }
+  const encoder = await ort.InferenceSession.create(new Uint8Array(await read(enc)), options)
+  let weightBytes: Uint8Array | null = new Uint8Array(await read(weights))
+  const external = [{ path: weights, data: weightBytes }]
+  const decoderInit = await ort.InferenceSession.create(new Uint8Array(await read(init)), { ...options, externalData: external, preferredOutputLocation: kvOnGpu })
+  const decoderStep = await ort.InferenceSession.create(new Uint8Array(await read(step)), { ...options, externalData: external, preferredOutputLocation: kvOnGpu })
+  weightBytes = null
+  external.length = 0
+
   qwen = {
     ort,
     half,
-    enc: await ort.InferenceSession.create(new Uint8Array(files[enc]), options),
-    init: await ort.InferenceSession.create(new Uint8Array(files[init]), { ...options, externalData: external, preferredOutputLocation: kvOnGpu }),
-    step: await ort.InferenceSession.create(new Uint8Array(files[step]), { ...options, externalData: external, preferredOutputLocation: kvOnGpu }),
+    enc: encoder,
+    init: decoderInit,
+    step: decoderStep,
     prompt: config.prompt,
     languageIds: config.language_prefix_ids,
-    filters: json('mel_filters.json').data,
-    embed: new Int8Array(files['embed_tokens.int8.bin']),
-    scales: new Float32Array(files['embed_scales.f32.bin']),
+    filters: (await json('mel_filters.json')).data,
+    embed: new Int8Array(await read('embed_tokens.int8.bin')),
+    scales: new Float32Array(await read('embed_scales.f32.bin')),
     idToToken,
     byteDecoder: buildByteDecoder(),
   }
