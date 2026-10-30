@@ -17,20 +17,12 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import LanguageSelector from './LanguageSelector'
 import SettingsSheet from './SettingsSheet'
-import LyricsPreview from './LyricsPreview'
+import { activeLineIndex, type Lyric } from '@/lib/lrc'
 
 // Import Romanization Libraries
 import { toRomaji } from 'wanakana'
 import { romanize } from '@romanize/korean'
 import { Label } from '@/components/ui/label'
-
-interface Lyric {
-  original: string
-  translated: string
-  romanized?: string // Optional field for Romanized text
-  startTimeMs: number
-  endTimeMs: number
-}
 
 interface Track {
   name: string
@@ -94,6 +86,8 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isRomanizing, setIsRomanizing] = useState<boolean>(false) // Loading state for Romanization
+  const [lyricsSynced, setLyricsSynced] = useState<boolean>(true)
+  const [lyricsStatus, setLyricsStatus] = useState<'idle' | 'loading' | 'ready' | 'missing' | 'instrumental'>('idle')
 
   // Translation settings state
   const [fromLanguage, setFromLanguage] = useState<string>('auto') // Default to auto-detect
@@ -205,9 +199,13 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     [accessToken, onTokenRefresh]
   )
 
+  // Latest lyrics, readable from async callbacks without re-subscribing effects.
+  const lyricsRef = useRef<Lyric[]>([])
+  useEffect(() => { lyricsRef.current = lyrics }, [lyrics])
+
   // Translate lyrics using the backend API
   const translateLyrics = useCallback(async (lyricsToTranslate: Lyric[]) => {
-    if (!toLanguage) return
+    if (!toLanguage || lyricsToTranslate.length === 0) return
 
     try {
       const response = await fetch('/api/translate', {
@@ -229,8 +227,14 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
 
       const data = await response.json() as TranslateResponse
 
-      // Assuming all lines are in the same language
-      const firstDetectedLang = data.translations[0]?.detectedSourceLanguage || 'auto'
+      // Use the most common detected language (the first line is often an English hook).
+      const counts: Record<string, number> = {}
+      for (const t of data.translations) {
+        if (t.detectedSourceLanguage && t.detectedSourceLanguage !== 'auto') {
+          counts[t.detectedSourceLanguage] = (counts[t.detectedSourceLanguage] || 0) + 1
+        }
+      }
+      const firstDetectedLang = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'auto'
 
       setDetectedLanguage(firstDetectedLang)
 
@@ -255,198 +259,157 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
   }, [fromLanguage, toLanguage, isRomanizationEnabled, applyRomanization])
 
   // Fetch lyrics from the API route
-  const fetchLyrics = useCallback(async (trackName: string, artistName: string) => {
+  const fetchLyrics = useCallback(async (track: Track) => {
     try {
       setError(null) // Reset error state before fetching
       setLyrics([]) // Clear existing lyrics
-      const response = await fetch(`/api/lyrics?track=${encodeURIComponent(trackName)}&artist=${encodeURIComponent(artistName)}`)
+      setLyricsStatus('loading')
+      const params = new URLSearchParams({
+        track: track.name,
+        artist: track.artist,
+        album: track.album,
+        durationMs: String(track.duration_ms),
+      })
+      const response = await fetch(`/api/lyrics?${params}`)
+      const data = await response.json()
       if (!response.ok) {
-        if (response.status === 404) {
-          setError('Lyrics not found for this track.')
-        } else {
-          setError('Failed to fetch lyrics.')
-        }
+        setLyricsStatus(data.instrumental ? 'instrumental' : 'missing')
+        if (response.status !== 404) setError(data.error || 'Failed to fetch lyrics.')
         return
       }
-      const data = await response.json()
       if (data.lyrics && data.lyrics.length > 0) {
-        // Initialize translated lyrics as empty strings
-        const initialLyrics: Lyric[] = data.lyrics.map((line: any) => ({
-          original: line.original,
-          translated: '',
-          startTimeMs: line.startTimeMs,
-          endTimeMs: line.endTimeMs,
-        }))
+        const initialLyrics: Lyric[] = data.lyrics
+        setLyricsSynced(Boolean(data.synced))
         setLyrics(initialLyrics)
+        setLyricsStatus('ready')
         // After setting original lyrics, initiate translation
         translateLyrics(initialLyrics)
       } else {
-        setError('Lyrics not available for this track.')
+        setLyricsStatus('missing')
       }
     } catch (error) {
       console.error('Error fetching lyrics:', error)
+      setLyricsStatus('missing')
       setError('An unexpected error occurred while fetching lyrics.')
     }
   }, [translateLyrics])
 
-  // Fetch the currently playing track
-  const fetchCurrentTrack = useCallback(async () => {
+  // Re-translate the current lyrics when the language pair changes.
+  const translateRef = useRef(translateLyrics)
+  useEffect(() => {
+    if (translateRef.current === translateLyrics) return
+    translateRef.current = translateLyrics
+    if (lyricsRef.current.length > 0) translateLyrics(lyricsRef.current)
+  }, [translateLyrics])
+
+  // Playback snapshot from the last poll; progress is interpolated locally between polls.
+  const playbackRef = useRef({ trackId: '', progressMs: 0, at: 0, isPlaying: false, durationMs: 0 })
+  const fetchLyricsRef = useRef(fetchLyrics)
+  useEffect(() => { fetchLyricsRef.current = fetchLyrics }, [fetchLyrics])
+
+  // Read the currently playing item. Runs on a loop for the whole session, so playback
+  // started (or changed) in any Spotify app after this page loads is picked up automatically.
+  const pollPlayback = useCallback(async () => {
     try {
       const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing')
+      const data = response.status === 204 ? null : response.ok ? await response.json() : undefined
 
-      if (response.status === 204) {
-        console.log('No track currently playing')
-        setError('No track is currently playing.')
-        setCurrentTrack(null)
-        setLyrics([])
+      if (data === undefined) {
+        if (response.status === 429) return // rate-limited: just wait for the next poll
+        setError('Unable to read your Spotify playback right now.')
         return
       }
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch current track.')
+      const item = data?.item
+      if (!item || data.currently_playing_type !== 'track') {
+        // Nothing playing, or an ad / podcast episode.
+        playbackRef.current = { trackId: '', progressMs: 0, at: Date.now(), isPlaying: false, durationMs: 0 }
+        setIsPlaying(false)
+        setCurrentTrack(null)
+        setLyrics([])
+        setLyricsStatus('idle')
+        return
       }
 
-      const data = await response.json()
-      setCurrentTrack({
-        name: data.item.name,
-        artist: data.item.artists[0].name,
-        album: data.item.album.name,
-        albumArt: data.item.album.images[0].url,
-        duration_ms: data.item.duration_ms,
-      })
+      const isNewTrack = item.id !== playbackRef.current.trackId
+      playbackRef.current = {
+        trackId: item.id,
+        progressMs: data.progress_ms ?? 0,
+        at: Date.now(),
+        isPlaying: data.is_playing,
+        durationMs: item.duration_ms,
+      }
       setIsPlaying(data.is_playing)
-      setProgress((data.progress_ms / data.item.duration_ms) * 100)
-      fetchLyrics(data.item.name, data.item.artists[0].name)
-    } catch (error) {
-      console.error('Error fetching current track:', error)
-      setError('Failed to fetch the current track.')
-    }
-  }, [fetchWithToken, fetchLyrics])
 
-  // Fetch user profile from Spotify
+      if (isNewTrack) {
+        const track: Track = {
+          name: item.name,
+          artist: item.artists?.[0]?.name || '',
+          album: item.album?.name || '',
+          albumArt: item.album?.images?.[0]?.url || '',
+          duration_ms: item.duration_ms,
+        }
+        setCurrentTrack(track)
+        fetchLyricsRef.current(track)
+      }
+      setError(null)
+    } catch (error) {
+      console.error('Error reading playback:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [fetchWithToken])
+
+  // Poll loop: every 2s while playing, every 5s while idle/paused.
+  useEffect(() => {
+    if (!accessToken) {
+      setIsLoading(false)
+      return
+    }
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout>
+    const loop = async () => {
+      await pollPlayback()
+      if (cancelled) return
+      timer = setTimeout(loop, playbackRef.current.isPlaying ? 2000 : 5000)
+    }
+    loop()
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [accessToken, pollPlayback])
+
+  // Smooth progress between polls.
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const p = playbackRef.current
+      if (!p.durationMs) return
+      const elapsed = p.isPlaying ? Date.now() - p.at : 0
+      setProgress(Math.min(100, ((p.progressMs + elapsed) / p.durationMs) * 100))
+    }, 200)
+    return () => clearInterval(tick)
+  }, [])
+
+  // Fetch user profile from Spotify (optional; the app works without it)
   const fetchUserProfile = useCallback(async () => {
     try {
       const response = await fetchWithToken('https://api.spotify.com/v1/me')
-      if (!response.ok) {
-        throw new Error('Failed to fetch user profile.')
-      }
+      if (!response.ok) return
       const data = await response.json()
-      console.log('User profile data:', data)
       setUserProfile({
-        name: data.display_name,
-        email: data.email,
+        name: data.display_name || data.id || 'Spotify user',
+        email: data.email || '',
         image: data.images?.[0]?.url || '',
       })
     } catch (error) {
       console.error('Error fetching user profile:', error)
-      setError('Failed to fetch user profile.')
     }
   }, [fetchWithToken])
 
-  // Fetch initial data (current track and user profile)
-  const fetchInitialData = useCallback(async () => {
-    console.log('Fetching initial data...')
-    setIsLoading(true)
-    setError(null)
-    try {
-      await Promise.all([fetchCurrentTrack(), fetchUserProfile()])
-    } catch (error) {
-      console.error('Error fetching initial data:', error)
-      setError('Failed to fetch initial data.')
-    } finally {
-      setIsLoading(false)
-    }
-  }, [fetchCurrentTrack, fetchUserProfile])
-
-  // Effect to fetch data when accessToken is available
   useEffect(() => {
-    if (accessToken) {
-      console.log('Access token available, fetching initial data...')
-      fetchInitialData()
-    } else {
-      console.log('No access token available')
-      setIsLoading(false)
-    }
-  }, [accessToken, fetchInitialData])
-
-  // Ref to store the interval ID
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-
-  // Effect to update progress and handle track changes
-  useEffect(() => {
-    // Function to fetch and update progress
-    const updateProgress = async () => {
-      if (currentTrack) {
-        try {
-          const response = await fetchWithToken('https://api.spotify.com/v1/me/player/currently-playing')
-          if (response.ok) {
-            const data = await response.json()
-            if (data.item && data.progress_ms !== undefined) {
-              const newProgress = (data.progress_ms / data.item.duration_ms) * 100
-              setProgress(newProgress)
-              setIsPlaying(data.is_playing)
-
-              // Optional: Update current track if it has changed
-              if (data.item.name !== currentTrack.name || data.item.artists[0].name !== currentTrack.artist) {
-                setCurrentTrack({
-                  name: data.item.name,
-                  artist: data.item.artists[0].name,
-                  album: data.item.album.name,
-                  albumArt: data.item.album.images[0].url,
-                  duration_ms: data.item.duration_ms,
-                })
-                fetchLyrics(data.item.name, data.item.artists[0].name)
-              }
-            } else {
-              setError('No track information available.')
-              setIsPlaying(false)
-            }
-          } else if (response.status === 204) {
-            setError('No track is currently playing.')
-            setCurrentTrack(null)
-            setIsPlaying(false)
-          } else {
-            setError('Unable to fetch current playback position.')
-            setIsPlaying(false)
-          }
-        } catch (error) {
-          console.error('Error updating progress:', error)
-          setError('Failed to update progress.')
-        }
-      }
-    }
-
-    // If the track is playing, set up the interval
-    if (isPlaying && currentTrack) {
-      // Initial fetch to sync immediately
-      updateProgress()
-
-      // Clear any existing interval
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-      }
-
-      // Set up a new interval (every 1 second)
-      intervalRef.current = setInterval(updateProgress, 1000)
-      console.log('Interval set for updating progress every second.')
-    }
-
-    // If not playing, clear the interval
-    if (!isPlaying && intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
-      console.log('Interval cleared as isPlaying is false.')
-    }
-
-    // Cleanup on unmount or when dependencies change
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-        console.log('Interval cleared on cleanup.')
-      }
-    }
-  }, [isPlaying, currentTrack, fetchWithToken, fetchLyrics])
+    if (accessToken) fetchUserProfile()
+  }, [accessToken, fetchUserProfile])
 
   // Handle volume change
   const handleVolumeChange = async (e: React.MouseEvent<HTMLDivElement>) => {
@@ -473,11 +436,8 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
         method: 'PUT',
       })
       setIsPlaying(!isPlaying)
-
-      // Add a small delay before re-fetching the track
-      setTimeout(() => {
-        fetchCurrentTrack() // Fetch the current track after toggling play/pause
-      }, 1000) // 1-second delay to avoid rapid re-fetching
+      playbackRef.current = { ...playbackRef.current, isPlaying: !isPlaying }
+      setTimeout(pollPlayback, 600)
     } catch (error) {
       console.error('Error toggling play/pause:', error)
       setError('Failed to play/pause track.')
@@ -490,7 +450,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
       await fetchWithToken(`https://api.spotify.com/v1/me/player/${direction}`, {
         method: 'POST',
       })
-      fetchCurrentTrack()
+      setTimeout(pollPlayback, 600)
     } catch (error) {
       console.error(`Error skipping ${direction}:`, error)
       setError(`Failed to skip to the ${direction} track.`)
@@ -506,6 +466,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
     setProgress(newProgress)
 
     const position_ms = Math.round((newProgress / 100) * currentTrack.duration_ms)
+    playbackRef.current = { ...playbackRef.current, progressMs: position_ms, at: Date.now() }
     try {
       await fetchWithToken(`https://api.spotify.com/v1/me/player/seek?position_ms=${position_ms}`, {
         method: 'PUT',
@@ -546,20 +507,13 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
 
   // Effect to sync lyrics highlighting with song progress
   useEffect(() => {
-    if (lyrics.length === 0 || !currentTrack) return
-
-    // Highlight current lyric line based on progress
-    const currentTimeMs = (progress / 100) * currentTrack.duration_ms
-    const currentLyricIndex = lyrics.findIndex(
-      (lyric, index) =>
-        currentTimeMs >= lyric.startTimeMs &&
-        (index === lyrics.length - 1 || currentTimeMs < lyrics[index + 1].startTimeMs)
-    )
-
-    if (currentLyricIndex !== -1 && currentLyricIndex !== currentLineIndex) {
-      setCurrentLineIndex(currentLyricIndex)
+    if (!lyricsSynced || lyrics.length === 0 || !currentTrack) {
+      setCurrentLineIndex(-1)
+      return
     }
-  }, [progress, lyrics, currentLineIndex, currentTrack])
+    const currentTimeMs = (progress / 100) * currentTrack.duration_ms
+    setCurrentLineIndex(activeLineIndex(lyrics, currentTimeMs))
+  }, [progress, lyrics, lyricsSynced, currentTrack])
 
   // Render loading state
   if (isLoading) {
@@ -579,7 +533,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold">Spotify Lyrics Translator</h1>
             <div className="flex items-center space-x-2">
-              {accessToken && userProfile ? (
+              {accessToken ? (
                 <>
                   {/* Settings Button */}
                   <SettingsSheet
@@ -600,7 +554,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                     setOkuriganaDelimiter={setOkuriganaDelimiter}
                   />
                   {/* User Profile Dropdown */}
-                  <DropdownMenu>
+                  {userProfile && <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon" className="relative h-8 w-8 rounded-full">
                         <Avatar className="h-8 w-8">
@@ -613,7 +567,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                       <DropdownMenuLabel className="font-normal">
                         <div className="flex flex-col space-y-1">
                           <p className="text-sm font-medium leading-none">{userProfile.name}</p>
-                          <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>
+                          {userProfile.email && <p className="text-xs leading-none text-muted-foreground">{userProfile.email}</p>}
                         </div>
                       </DropdownMenuLabel>
                       <DropdownMenuSeparator />
@@ -624,7 +578,10 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                         Log out
                       </DropdownMenuItem>
                     </DropdownMenuContent>
-                  </DropdownMenu>
+                  </DropdownMenu>}
+                  {!userProfile && (
+                    <Button variant="ghost" onClick={onLogout} className="text-zinc-300">Log out</Button>
+                  )}
                 </>
               ) : (
                 <Button onClick={() => window.location.href = '/login'}>Log in</Button>
@@ -685,6 +642,9 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                     ? `From: Auto (${languageCodeToName(detectedLanguage)})`
                     : `From: ${languageCodeToName(fromLanguage)}`}
                 </div>
+                {!lyricsSynced && (
+                  <div className="mb-2 text-xs text-zinc-500">These lyrics are not time-synced, so lines won&apos;t highlight.</div>
+                )}
                 {lyrics.map((line, index) => (
                   <div
                     key={index}
@@ -697,7 +657,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                         <p className="text-sm text-zinc-300 italic">{line.romanized}</p>
                       )}
                       {/* Display translated lyrics if available */}
-                      {line.translated && (
+                      {line.translated && line.translated.trim().toLowerCase() !== line.original.trim().toLowerCase() && (
                         <p className="text-sm text-zinc-300">{line.translated}</p>
                       )}
                     </div>
@@ -705,7 +665,13 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
                 ))}
               </>
             ) : (
-              <p className="text-center text-zinc-400">Lyrics not available for this track.</p>
+              <p className="text-center text-zinc-400 pt-20">
+                {lyricsStatus === 'idle' && 'Play a song in any Spotify app — it will show up here automatically.'}
+                {lyricsStatus === 'loading' && 'Looking up lyrics…'}
+                {lyricsStatus === 'missing' && 'No lyrics found for this track yet.'}
+                {lyricsStatus === 'instrumental' && '♪ Instrumental'}
+                {lyricsStatus === 'ready' && ''}
+              </p>
             )}
           </div>
 
