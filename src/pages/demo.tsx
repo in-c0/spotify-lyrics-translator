@@ -122,6 +122,7 @@ export default function DemoPage() {
           className="flex-1"
           lyrics={lyrics}
           activeIndex={activeIndex}
+          positionMs={positionMs}
           romanizeFrom={romanizationOn ? song.language : null}
           showTranslation={translationOn}
           onSeek={seek}
