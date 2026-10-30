@@ -45,6 +45,21 @@
 
   <br />
 
+### 🎧 No-login mode (`/listen`)
+Don't want to set up a Spotify app? Open `/listen`, search a song (lyrics from LRCLIB), play it anywhere, and either:
+- **tap a line** when it's sung to sync the timeline, or
+- **Follow by listening** — after a one-time consent, the page downloads a speech model and runs it **locally in your browser**. It listens through your mic or a shared tab and moves the lyrics to where the song is. Audio stays in memory: never uploaded, never saved.
+
+| Device | Model | One-time download |
+| --- | --- | --- |
+| WebGPU with fp16 (most recent Chrome/Edge on Mac & Windows) | [Qwen3-ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), q4f16 ([ONNX export](https://huggingface.co/jiangzhuo9357/Qwen3-ASR-0.6B-ONNX)) | ~0.9 GB |
+| WebGPU without fp16 | Qwen3-ASR 0.6B, q4 | ~1.3 GB |
+| No WebGPU | Whisper base (transformers.js) | ~55 MB |
+
+Qwen3-ASR (Apache-2.0, 2026) is the open model with the strongest published results on sung vocals and full songs with backing music. Listening only needs to recognise *roughly* what's being sung to find the line, so it works even when the transcript isn't perfect.
+
+> Only use listening with music you're allowed to play. Nothing is recorded, but check the terms of the service you're streaming from.
+
 ### **Why build this?**
 
 This project was built primarily for **educational purposes** and to explore additional functionalities that could be extended into:

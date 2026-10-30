@@ -1,9 +1,13 @@
 # Netlify builds this as a regular Next.js app (pages + API routes run as functions).
-# The /demo page needs no keys. Spotify login on a hosted site needs the env vars from
-# .env.example set in Netlify, plus the site's /callback URL added in the Spotify dashboard.
+# The /demo and /listen pages need no keys. Spotify login on a hosted site needs the env vars
+# from .env.example set in Netlify, plus the site's /callback URL added in the Spotify dashboard.
 [build]
   command = "npm run build"
   publish = ".next"
 
 [build.environment]
   NODE_VERSION = "22"
+
+# Without the Next.js runtime Netlify uploads .next as plain files and every route 404s.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

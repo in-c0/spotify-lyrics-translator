@@ -31,6 +31,7 @@ export default function LoginPage() {
       <p className="mb-8 max-w-md text-zinc-400">Sing along in any language — synced lyrics with romanization and translation.</p>
       <div className="mb-8 flex flex-wrap justify-center gap-2 text-sm">
         <a href="/demo" className="rounded-full bg-white/10 px-4 py-2 font-semibold hover:bg-white/20">Try the demo</a>
+        <a href="/listen" className="rounded-full bg-white/10 px-4 py-2 font-semibold hover:bg-white/20">Use without Spotify login</a>
       </div>
       {isConfigured ? (
         <Button onClick={handleLogin} className="bg-green-500 hover:bg-green-600 text-white">
