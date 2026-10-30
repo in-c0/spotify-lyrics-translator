@@ -76,3 +76,84 @@
     @apply bg-background text-foreground;
   }
 }
+/* ── Lyrics view ─────────────────────────────────────────── */
+@layer components {
+  .hide-scrollbar { scrollbar-width: none; }
+  .hide-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Fade lines out towards the top and bottom edges. */
+  .lyrics-mask {
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 80%, transparent 100%);
+    mask-image: linear-gradient(to bottom, transparent 0, #000 14%, #000 80%, transparent 100%);
+  }
+
+  .lyric-line {
+    transform-origin: left center;
+    filter: blur(var(--blur, 0px));
+    transition: opacity 450ms ease, transform 450ms cubic-bezier(.2, .8, .2, 1), filter 450ms ease;
+  }
+  .lyric-line.future { opacity: 0.45; }
+  .lyric-line.past { opacity: 0.3; }
+  .lyric-line.active { opacity: 1; transform: scale(1.02); }
+  .lyric-scroller:hover .lyric-line { filter: none; } /* browsing: everything readable */
+
+  /* Active line: a left-to-right sweep shows how far through the line the singer is. */
+  .lyric-sweep {
+    -webkit-box-decoration-break: slice;
+    box-decoration-break: slice;
+    background: linear-gradient(90deg, #fff var(--p), rgba(255, 255, 255, 0.5) var(--p));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .lyric-gap { display: flex; gap: 0.5rem; padding-left: 0.15rem; }
+  .lyric-dot { width: 0.6rem; height: 0.6rem; border-radius: 9999px; background: currentColor; opacity: 0.6; transition: opacity 200ms linear; }
+  @media (hover: hover) {
+    .lyric-line.cursor-pointer:hover { opacity: 0.8; }
+  }
+
+  .lyric-original {
+    font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.25rem);
+    line-height: 1.2;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .lyric-roman {
+    margin-top: 0.2em;
+    font-size: clamp(1rem, 0.85rem + 0.6vw, 1.25rem);
+    font-weight: 600;
+    opacity: 0.85;
+  }
+  .lyric-trans {
+    margin-top: 0.15em;
+    font-size: clamp(0.95rem, 0.8rem + 0.5vw, 1.15rem);
+    font-weight: 500;
+    opacity: 0.65;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .lyric-line { transition: none; filter: none; }
+    .lyric-line.active { transform: none; }
+  }
+}
+
+/* One-time hint: a hairline that traces the control while it auto-toggles once. */
+@layer components {
+  .hairline-ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    animation: hairline 1.6s ease-out 2;
+    pointer-events: none;
+  }
+  @keyframes hairline {
+    0% { opacity: 0; transform: scale(0.96); }
+    30% { opacity: 1; }
+    100% { opacity: 0; transform: scale(1.12); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hairline-ring { animation: none; opacity: 0.8; }
+  }
+}
