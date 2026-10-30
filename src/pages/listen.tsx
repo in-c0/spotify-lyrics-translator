@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import Head from 'next/head'
 import Link from 'next/link'
-import { Ear, EarOff, Loader2, Search } from 'lucide-react'
+import { AudioLines, Loader2, Search, Square } from 'lucide-react'
 import PlayerShell from '@/components/PlayerShell'
 import LyricsView from '@/components/LyricsView'
 import { activeLineIndex, type Lyric } from '@/lib/lrc'
@@ -19,9 +19,17 @@ type ListenState =
   | { kind: 'consent'; engine: EngineKind }
   | { kind: 'loading'; engine: EngineKind; loaded: number; total: number }
   | { kind: 'choose-source'; engine: EngineKind }
-  | { kind: 'listening'; engine: EngineKind; heard: string }
+  | { kind: 'listening'; engine: EngineKind; phase: 'listening' | 'transcribing'; heard: string; latencyMs: number; match: MatchInfo | null }
   | { kind: 'error'; message: string }
 
+/** What the last transcript did to the lyrics, shown in the transcription panel. */
+type MatchInfo =
+  | { kind: 'moved'; line: number; fromMs: number; toMs: number }
+  | { kind: 'confirmed'; line: number }
+  | { kind: 'line'; line: number } // text-only lyrics: highlighted the matched line
+  | { kind: 'none' }
+
+const FEATURE_NAME = 'Local song lyrics transcription'
 const WINDOW_S = 8 // singing transcribes far better in 6–10 s windows than in short chunks
 const MIN_AUDIO_S = 3
 
@@ -77,6 +85,7 @@ export default function ListenPage() {
 
   const synced = lyrics.length > 0 && lyrics[0].startTimeMs >= 0
   const [followIndex, setFollowIndex] = useState(-1) // used for unsynced lyrics
+  const [heardIndex, setHeardIndex] = useState(-1) // line the last transcript matched (marked in the view)
   const activeIndex = synced ? activeLineIndex(lyrics, positionMs) : followIndex
 
   // ── Pick a track ──
@@ -170,17 +179,18 @@ export default function ListenPage() {
       await cap.start(source)
       cap.onEnded = stopListening
       capture.current = cap
-      setListen({ kind: 'listening', engine, heard: '' })
+      setListen({ kind: 'listening', engine, phase: 'listening', heard: '', latencyMs: 0, match: null })
       const tick = async () => {
         const c = capture.current
         if (!c) return
         if (c.capturedSeconds >= MIN_AUDIO_S) {
           const capturedAt = Date.now()
           const lang = romanizableLanguage(detectedRef.current) || detectedRef.current.split('-')[0] || undefined
-          const { text } = await asr.current!.transcribe(c.latest(WINDOW_S), lang)
+          setListen(s => (s.kind === 'listening' ? { ...s, phase: 'transcribing' } : s))
+          const { text, ms } = await asr.current!.transcribe(c.latest(WINDOW_S), lang)
           if (!capture.current) return
-          setListen(s => (s.kind === 'listening' ? { ...s, heard: text } : s))
-          follow(text, capturedAt)
+          const match = text ? follow(text, capturedAt) : null
+          setListen(s => (s.kind === 'listening' ? { ...s, phase: 'listening', heard: text || s.heard, latencyMs: ms, match: match ?? s.match } : s))
         }
         loop.current = setTimeout(tick, 1500)
       }
@@ -191,20 +201,26 @@ export default function ListenPage() {
   }
 
   // Move the lyrics to where the transcript says we are.
-  const follow = (heard: string, capturedAt: number) => {
+  const follow = (heard: string, capturedAt: number): MatchInfo => {
     const ls = lyricsRef.current
     const match = alignTranscript(ls, heard, activeRef.current)
-    if (!match) return
+    if (!match) return { kind: 'none' }
+    setHeardIndex(match.lineIndex)
     const line = ls[match.lineIndex]
     if (line.startTimeMs < 0) {
       setFollowIndex(match.lineIndex)
-      return
+      return { kind: 'line', line: match.lineIndex }
     }
     // The window ends "now", so we're most likely near the end of the last line heard.
     const next = ls[match.lineIndex + 1]?.startTimeMs ?? line.startTimeMs + 4000
     const lineEnd = Math.min(next, line.startTimeMs + 6000)
     const estimate = line.startTimeMs + 0.75 * (lineEnd - line.startTimeMs) + (Date.now() - capturedAt)
-    if (!clock.current.playing || Math.abs(estimate - now()) > 1500) setClock(estimate, true)
+    const current = now()
+    if (!clock.current.playing || Math.abs(estimate - current) > 1500) {
+      setClock(estimate, true)
+      return { kind: 'moved', line: match.lineIndex, fromMs: current, toMs: estimate }
+    }
+    return { kind: 'confirmed', line: match.lineIndex }
   }
 
   // ── Render ──
@@ -213,17 +229,20 @@ export default function ListenPage() {
 
   const listenButton = track && (
     listen.kind === 'listening' ? (
-      <button onClick={stopListening} className="flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-black">
-        <Ear className="h-4 w-4 animate-pulse" /> Following
+      <button onClick={stopListening} title="Stop transcription" className="flex h-9 items-center gap-1.5 rounded-full bg-white px-3 text-sm font-semibold text-black">
+        <Square className="h-3.5 w-3.5" fill="currentColor" /> Stop
       </button>
     ) : (
       <button
         onClick={beginListening}
         disabled={listen.kind === 'loading'}
+        title={`${FEATURE_NAME} (beta)`}
         className="flex h-9 items-center gap-1.5 rounded-full border border-white/20 bg-white/10 px-3 text-sm font-semibold hover:bg-white/20 disabled:opacity-60"
       >
-        {listen.kind === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <EarOff className="h-4 w-4" />}
-        Follow by listening
+        {listen.kind === 'loading' ? <Loader2 className="h-4 w-4 animate-spin" /> : <AudioLines className="h-4 w-4" />}
+        <span className="hidden md:inline">{FEATURE_NAME}</span>
+        <span className="md:hidden">Transcribe</span>
+        <span className="rounded bg-white/15 px-1 text-[10px] font-bold uppercase tracking-wide">beta</span>
       </button>
     )
   )
@@ -279,7 +298,7 @@ export default function ListenPage() {
       <Head><title>{track.trackName} · Listen</title></Head>
       <PlayerShell
         track={{ title: track.trackName, artist: track.artistName }}
-        status={[LANGUAGE_NAMES[detected.split('-')[0]] && `Lyrics in ${LANGUAGE_NAMES[detected.split('-')[0]]}`, listen.kind === 'listening' ? 'Following by listening' : synced ? 'Tap a line when it’s sung to sync' : ''].filter(Boolean).join(' · ')}
+        status={[LANGUAGE_NAMES[detected.split('-')[0]] && `Lyrics in ${LANGUAGE_NAMES[detected.split('-')[0]]}`, listen.kind === 'listening' ? 'Transcribing on this device' : synced ? 'Tap a line when it’s sung to sync' : ''].filter(Boolean).join(' · ')}
         headerRight={
           <div className="flex items-center gap-2">
             {listenButton}
@@ -291,13 +310,16 @@ export default function ListenPage() {
         romanization={{ enabled: romanizationOn, available: Boolean(romanizeLang), onChange: setRomanizationOn }}
         translation={{ enabled: translationOn, onChange: setTranslationOn, target, targets: TARGET_LANGUAGES, onTarget: setTarget }}
         footerNote={
-          listen.kind === 'listening' && listen.heard ? <span className="line-clamp-1">Heard: “{listen.heard}”</span>
-          : listen.kind === 'error' ? <span className="text-red-300">{listen.message}</span>
+          listen.kind === 'error' ? <span className="text-red-300">{listen.message}</span>
           : undefined
         }
       >
+        {listen.kind === 'listening' && (
+          <TranscriptionPanel state={listen} capture={capture} lyrics={lyrics} />
+        )}
         <LyricsView
           className="flex-1"
+          markedIndex={listen.kind === 'listening' ? heardIndex : -1}
           lyrics={lyrics}
           activeIndex={activeIndex}
           positionMs={synced ? positionMs : -1}
@@ -310,7 +332,7 @@ export default function ListenPage() {
       {(listen.kind === 'consent' || listen.kind === 'loading' || listen.kind === 'choose-source') && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-5 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl bg-zinc-900 p-6 text-white shadow-2xl ring-1 ring-white/10">
-            <h2 className="text-xl font-bold">Follow by listening</h2>
+            <h2 className="text-xl font-bold">{FEATURE_NAME} <span className="align-middle text-xs font-bold uppercase text-white/50">beta</span></h2>
             {listen.kind === 'consent' && (
               <>
                 <ul className="mt-3 space-y-2 text-sm text-white/75">
@@ -353,6 +375,49 @@ export default function ListenPage() {
       )}
     </>
   )
+}
+
+// Live view of what the local model hears and what it did — so it's obvious the feature is working.
+function TranscriptionPanel({ state, capture, lyrics }: {
+  state: Extract<ListenState, { kind: 'listening' }>
+  capture: React.MutableRefObject<AudioCapture | null>
+  lyrics: Lyric[]
+}) {
+  const [level, setLevel] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setLevel(capture.current?.level() ?? 0), 100)
+    return () => clearInterval(id)
+  }, [capture])
+
+  const m = state.match
+  const lineText = (i: number) => `“${(lyrics[i]?.original || '').slice(0, 40)}${(lyrics[i]?.original || '').length > 40 ? '…' : ''}”`
+  const result =
+    !m ? (state.heard ? '' : 'Waiting for singing…')
+    : m.kind === 'moved' ? `Jumped ${fmtDelta(m.toMs - m.fromMs)} to line ${m.line + 1} ${lineText(m.line)}`
+    : m.kind === 'confirmed' ? `In sync at line ${m.line + 1} ${lineText(m.line)}`
+    : m.kind === 'line' ? `Highlighted line ${m.line + 1} ${lineText(m.line)}`
+    : 'Heard something, but it doesn’t match these lyrics yet'
+
+  return (
+    <div className="mt-3 rounded-2xl bg-black/35 px-4 py-3 ring-1 ring-white/10 backdrop-blur" aria-live="polite">
+      <div className="flex items-center gap-3 text-xs text-white/60">
+        <div className="flex h-4 items-end gap-0.5" aria-label="Input level">
+          {[0.15, 0.35, 0.55, 0.75, 0.9].map(t => (
+            <span key={t} className="w-1 rounded-full bg-white transition-[height,opacity] duration-100" style={{ height: `${level > t ? 100 : 25}%`, opacity: level > t ? 0.95 : 0.3 }} />
+          ))}
+        </div>
+        <span className="font-semibold text-white/80">{state.phase === 'transcribing' ? 'Transcribing last 8 s…' : 'Listening'}</span>
+        <span className="ml-auto truncate">{ENGINE_INFO[state.engine].label}{state.latencyMs ? ` · ${(state.latencyMs / 1000).toFixed(1)} s` : ''}</span>
+      </div>
+      <p className="mt-2 line-clamp-2 min-h-[1.5em] text-base italic text-white/90">{state.heard ? `“${state.heard}”` : '…'}</p>
+      {result && <p className={`mt-1 truncate text-xs ${m?.kind === 'none' ? 'text-amber-200/80' : 'text-emerald-200/90'}`}>{result}</p>}
+    </div>
+  )
+}
+
+function fmtDelta(ms: number) {
+  const s = Math.round(ms / 1000)
+  return `${s >= 0 ? '+' : '−'}${Math.abs(s)} s`
 }
 
 function formatMb(mb: number) {
