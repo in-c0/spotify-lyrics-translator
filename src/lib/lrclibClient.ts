@@ -13,7 +13,14 @@ export interface LrclibTrack {
 }
 
 export async function searchTracks(query: string, signal?: AbortSignal): Promise<LrclibTrack[]> {
-  const response = await fetch(`https://lrclib.net/api/search?${new URLSearchParams({ q: query })}`, { signal })
+  const url = `https://lrclib.net/api/search?${new URLSearchParams({ q: query })}`
+  let response = await fetch(url, { signal })
+  if (response.status === 503) {
+    // LRCLIB answers 503 for some queries it can't resolve upstream; retry once, then treat as no match.
+    await new Promise(r => setTimeout(r, 800))
+    response = await fetch(url, { signal })
+    if (response.status === 503) return []
+  }
   if (!response.ok) throw new Error(`Lyrics search failed (${response.status})`)
   const results: LrclibTrack[] = await response.json()
   // Synced lyrics first; drop exact duplicates (same title/artist/duration).

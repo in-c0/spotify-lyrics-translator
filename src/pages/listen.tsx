@@ -262,7 +262,7 @@ export default function ListenPage() {
                   </button>
                 </li>
               ))}
-              {results && results.length === 0 && !searching && <li className="px-3 py-2 text-white/50">No lyrics found.</li>}
+              {results && results.length === 0 && !searching && <li className="px-3 py-2 text-white/50">No lyrics found. Try the song title plus the artist.</li>}
             </ul>
             <p className="mt-10 text-xs text-white/40">
               Lyrics from <a className="underline" href="https://lrclib.net" target="_blank" rel="noreferrer">LRCLIB</a>.{' '}
