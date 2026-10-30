@@ -77,7 +77,7 @@ export function useYouTubePlayer(hostRef: RefObject<HTMLDivElement>, videoIds: s
             onStateChange: (e: any) => {
               if (cancelled) return
               const s = e.data
-              if (s === 1 || s === 3) { playRequested.current = 0; setStalled(false) }
+              if (s === 1) { playRequested.current = 0; setStalled(false) } // buffering forever still counts as stalled
               if (s === 1) setStatus('playing')
               else if (s === 2) setStatus('paused')
               else if (s === 0) setStatus('ended')
@@ -113,8 +113,8 @@ export function useYouTubePlayer(hostRef: RefObject<HTMLDivElement>, videoIds: s
     playRequested.current = Date.now()
     setStalled(false)
     setTimeout(() => {
-      if (playRequested.current && Date.now() - playRequested.current >= 7000) setStalled(true)
-    }, 7500)
+      if (playRequested.current && Date.now() - playRequested.current >= 9500) setStalled(true)
+    }, 10000)
   }, [])
   /** Try the next candidate recording. */
   const next = useCallback(() => { setStalled(false); setIndex(i => i + 1) }, [])
