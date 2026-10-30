@@ -89,11 +89,26 @@
 
   .lyric-line {
     transform-origin: left center;
-    transition: opacity 400ms ease, transform 400ms ease, filter 400ms ease;
+    filter: blur(var(--blur, 0px));
+    transition: opacity 450ms ease, transform 450ms cubic-bezier(.2, .8, .2, 1), filter 450ms ease;
   }
-  .lyric-line.future { opacity: 0.42; }
-  .lyric-line.past { opacity: 0.28; }
-  .lyric-line.active { opacity: 1; }
+  .lyric-line.future { opacity: 0.45; }
+  .lyric-line.past { opacity: 0.3; }
+  .lyric-line.active { opacity: 1; transform: scale(1.02); }
+  .lyric-scroller:hover .lyric-line { filter: none; } /* browsing: everything readable */
+
+  /* Active line: a left-to-right sweep shows how far through the line the singer is. */
+  .lyric-sweep {
+    -webkit-box-decoration-break: slice;
+    box-decoration-break: slice;
+    background: linear-gradient(90deg, #fff var(--p), rgba(255, 255, 255, 0.5) var(--p));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .lyric-gap { display: flex; gap: 0.5rem; padding-left: 0.15rem; }
+  .lyric-dot { width: 0.6rem; height: 0.6rem; border-radius: 9999px; background: currentColor; opacity: 0.6; transition: opacity 200ms linear; }
   @media (hover: hover) {
     .lyric-line.cursor-pointer:hover { opacity: 0.8; }
   }
@@ -118,7 +133,8 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .lyric-line { transition: none; }
+    .lyric-line { transition: none; filter: none; }
+    .lyric-line.active { transform: none; }
   }
 }
 

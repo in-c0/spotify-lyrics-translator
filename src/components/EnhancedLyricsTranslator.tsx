@@ -243,6 +243,7 @@ export default function EnhancedLyricsTranslator({ refreshToken, onLogout, acces
           className="flex-1"
           lyrics={lyrics}
           activeIndex={activeIndex}
+          positionMs={positionMs}
           romanizeFrom={romanizationOn ? romanizeLang : null}
           showTranslation={translationOn}
           onSeek={seek}
