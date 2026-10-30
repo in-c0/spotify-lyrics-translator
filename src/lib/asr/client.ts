@@ -6,7 +6,7 @@ export type { EngineKind }
 export const ENGINE_INFO: Record<EngineKind, { label: string; downloadMb: number }> = {
   'qwen3-q4f16': { label: 'Qwen3-ASR 0.6B (WebGPU)', downloadMb: 890 },
   'qwen3-q4': { label: 'Qwen3-ASR 0.6B (WebGPU)', downloadMb: 1300 },
-  'whisper-base': { label: 'Whisper base (no GPU)', downloadMb: 80 },
+  'whisper-base': { label: 'Whisper base (no GPU)', downloadMb: 55 },
 }
 
 export class AsrClient {

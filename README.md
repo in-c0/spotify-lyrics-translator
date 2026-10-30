@@ -53,7 +53,7 @@ Don't want to set up a Spotify app? Open `/listen`, search a song (lyrics from L
 | --- | --- | --- |
 | WebGPU with fp16 (most recent Chrome/Edge on Mac & Windows) | [Qwen3-ASR 0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B), q4f16 ([ONNX export](https://huggingface.co/jiangzhuo9357/Qwen3-ASR-0.6B-ONNX)) | ~0.9 GB |
 | WebGPU without fp16 | Qwen3-ASR 0.6B, q4 | ~1.3 GB |
-| No WebGPU | Whisper base (transformers.js) | ~80 MB |
+| No WebGPU | Whisper base (transformers.js) | ~55 MB |
 
 Qwen3-ASR (Apache-2.0, 2026) is the open model with the strongest published results on sung vocals and full songs with backing music. Listening only needs to recognise *roughly* what's being sung to find the line, so it works even when the transcript isn't perfect.
 

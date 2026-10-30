@@ -12,7 +12,8 @@ import { decodeBpe, buildByteDecoder } from '@/lib/asr/bpe'
 declare const self: DedicatedWorkerGlobalScope
 
 const ORT_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.webgpu.min.mjs'
-const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/dist/transformers.web.min.js'
+// jsDelivr's +esm build rewrites bare imports (e.g. onnxruntime-web) to CDN URLs.
+const TRANSFORMERS_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.3.2/+esm'
 const QWEN_BASE = 'https://huggingface.co/jiangzhuo9357/Qwen3-ASR-0.6B-ONNX/resolve/4a01b95fafe2c9e3af77e33c18bbb7de349c62f6'
 const WHISPER_MODEL = 'onnx-community/whisper-base'
 const CACHE = 'slt-asr-v1'
