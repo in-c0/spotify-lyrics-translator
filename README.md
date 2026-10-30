@@ -34,13 +34,13 @@
 
 - 🔤 **Romanization** — renders non-Latin scripts (Japanese, Korean, Chinese, Cyrillic) in Latin characters so you can sing along even if you can't read the original.
 - 🌍 **Translation** — shows your language beneath each synced line so you understand what the song means.
-- ⏱️ **Time-synced** — lines track the music via the **Spotify Web Playback SDK** (more native than CSS-only web-player extensions).
+- ⏱️ **Time-synced** — follows whatever you play in **any** Spotify app (desktop, phone, web) via the Spotify Web API; synced lyrics come from [LRCLIB](https://lrclib.net), a free community lyrics database.
 - 💸 **No credit card to try** — translation works out of the box with a free, no-key translator by default. An official Google Translate API key is *optional* for higher reliability.
 - 🖥️ **Runs locally, bring-your-own keys** — nothing is hosted; your Spotify credentials stay on your machine. This is an open-source hobby/educational project.
 
 > Inspired by [Moegi](https://github.com/sglkc/moegi) by @sglkc (original idea & design inspiration).
 
-> ⚠️ Requires a **Spotify Premium** account — the Web Playback SDK will not stream without it.
+> ⚠️ **Spotify rules for personal (Development Mode) apps, since 2026:** the person who creates the Spotify app needs **Premium**, and up to **5 users** can log in — add anyone besides yourself under the app's *User Management*. Play/pause/skip buttons also need Premium on the listening account.
 
   <br />
 
@@ -55,9 +55,9 @@ The app should be portable to **Mac, Linux**, and **mobile devices**, although t
 
   <br />
 
-### Current Issues (v0.1):
-- **Japanese Romanization** is incomplete due to the complexity of Kanji.
-- **Language settings** have not yet been implemented.
+### Known limitations
+- **Japanese romanization** converts kana only; Kanji are left as-is.
+- Lyrics coverage depends on [LRCLIB](https://lrclib.net). Tracks without synced lyrics show plain lyrics (no highlighting) or nothing.
 
   <br />
 
@@ -80,6 +80,7 @@ cp .env.example .env.local
 ```
 npm run dev
 ```
+5. Open **http://127.0.0.1:3000** (not `localhost` — see below), log in, and play any song in Spotify. It appears automatically.
 
 ### How To Set Up Environment Variables
 
@@ -94,20 +95,20 @@ The app uses a free, no-key translator out of the box, so you can leave `GOOGLE_
 GOOGLE_TRANSLATE_API_KEY=   # leave blank to use the free translator
 ```
 
-#### 2. Spotify Developer Account
-Set up your [Spotify Developer](https://developer.spotify.com/dashboard) account and obtain your client secret.
-```
-SPOTIFY_CLIENT_SECRET=... (Set up here: https://developer.spotify.com/documentation/web-api)
-```
+#### 2. Spotify app (required)
+1. Open the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) → **Create app**. Select **Web API**.
+2. Under **Redirect URIs**, add exactly `http://127.0.0.1:3000/callback`.
+   Spotify [no longer accepts `localhost`](https://developer.spotify.com/documentation/web-api/concepts/redirect_uri) — use the loopback IP.
+3. Copy the **Client ID** and **Client secret** into `.env.local` (the client ID goes in two variables).
 
 Your final `.env` would look something like this for local development:
 ```
 NEXT_PUBLIC_SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_ID=...
 SPOTIFY_CLIENT_SECRET=...
-NEXT_PUBLIC_SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
-SPOTIFY_REDIRECT_URI=http://localhost:3000/callback
-GOOGLE_TRANSLATE_API_KEY=...
+NEXT_PUBLIC_SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/callback
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:3000/callback
+GOOGLE_TRANSLATE_API_KEY=   # optional
 ```
 
 I’m exploring ways to make this app more accessible to users, as most cloud-based solutions incur costs. Some ideas for future development include:
@@ -115,14 +116,22 @@ I’m exploring ways to make this app more accessible to users, as most cloud-ba
  - Local LLM for translation ([GPT4ALL](https://github.com/nomic-ai/gpt4all))
  - Local transcription AI (e.g. [Moises.ai](https://moises.ai/) or finetune Whisper, if there is a reliable way to somehow extract only the vocals out)
    
-(... or I could host a server with a couple of ads, as long as it aligns with the license agreements... It probably won't in the current state given the Musixmatch API being difficult to obtain.)
+### Troubleshooting
+
+| You see | Fix |
+| --- | --- |
+| Spotify says **"INVALID_CLIENT: Invalid redirect URI"** | The Redirect URI in the dashboard must be exactly `http://127.0.0.1:3000/callback`. |
+| "Spotify rejected the app credentials" after login | Re-check `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` in `.env.local`, then restart `npm run dev`. |
+| Login works for you but not a friend | Add their Spotify email under your app's **User Management** (max 5). |
+| "Play a song in any Spotify app…" | Start playback on any device; the page picks it up within a few seconds. |
+| "No lyrics found" | LRCLIB doesn't have this track yet — you can [contribute it](https://lrclib.net). |
 
   <br />
 
 ### Credits
 
-A big thank you to @BlueCatSoftware for providing the [Lyrix](https://github.com/BlueCatSoftware/Lyrix) through Musixmatch,
-and to @sglkc for the inspiration behind this project ([Chrome Extension](https://github.com/sglkc/moegi)).
+Synced lyrics by [LRCLIB](https://lrclib.net) (community-contributed). Earlier versions used @BlueCatSoftware's [Lyrix](https://github.com/BlueCatSoftware/Lyrix), which is no longer online —
+thanks for getting this project started — and to @sglkc for the inspiration behind this project ([Chrome Extension](https://github.com/sglkc/moegi)).
 
   <br />
 

@@ -4,9 +4,9 @@
   "description": "AI translates lyrics into other languages!",
   "main": "main.js",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
