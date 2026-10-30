@@ -100,7 +100,8 @@ export default function DemoPage() {
       </Head>
       <PlayerShell
         track={{ title: song.title, artist: song.artist, colors: song.colors }}
-        status="Demo · public-domain folk song"
+        back={{ href: '/', label: 'Home' }}
+        status="Preview of the lyrics view · no sound"
         headerRight={<div className="hidden max-w-[50%] sm:block">{picker}</div>}
         progress={{ positionMs, durationMs: song.durationMs, onSeek: seek }}
         playback={{
