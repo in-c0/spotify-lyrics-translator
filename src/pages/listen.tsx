@@ -131,7 +131,9 @@ export default function ListenPage() {
   const beginListening = async () => {
     try {
       asr.current = asr.current || new AsrClient()
-      const engine = await asr.current.pickEngine()
+      // `?engine=whisper-base` forces the small model (handy when the GPU model misbehaves).
+      const forced = new URLSearchParams(window.location.search).get('engine') as EngineKind | null
+      const engine = forced && forced in ENGINE_INFO ? forced : await asr.current.pickEngine()
       let consented = false
       try { consented = localStorage.getItem(`slt:asrConsent:${engine}`) === '1' } catch { /* ignore */ }
       if (consented) await loadEngine(engine)
@@ -151,6 +153,13 @@ export default function ListenPage() {
       await client.load(engine)
       setListen({ kind: 'choose-source', engine })
     } catch (e: any) {
+      if (engine !== 'whisper-base') {
+        // The GPU model couldn't start on this device: offer the small CPU model instead.
+        asr.current?.dispose()
+        asr.current = new AsrClient()
+        setListen({ kind: 'consent', engine: 'whisper-base' })
+        return
+      }
       setListen({ kind: 'error', message: e.message })
     }
   }
