@@ -13,20 +13,28 @@ const MAX_CHUNK_CHARS = 4000
 
 export async function translateFree(text: string[], sourceLang: string, targetLang: string): Promise<Translation[]> {
   const results: Translation[] = new Array(text.length)
-  for (const chunk of chunkLines(text)) {
-    const { lines, detected } = await freeRequest(chunk.map(i => text[i]), sourceLang, targetLang)
-    if (lines.length === chunk.length) {
-      chunk.forEach((lineIndex, j) => {
-        results[lineIndex] = { translatedText: lines[j], detectedSourceLanguage: detected }
-      })
-      continue
+  // Blank lines need no request.
+  const work = text.map((_, i) => i).filter(i => {
+    if (text[i].trim()) return true
+    results[i] = { translatedText: text[i], detectedSourceLanguage: sourceLang }
+    return false
+  })
+  const translateGroup = async (group: number[]): Promise<void> => {
+    const { lines, detected } = await freeRequest(group.map(i => text[i]), sourceLang, targetLang)
+    if (lines.length === group.length) {
+      group.forEach((lineIndex, j) => { results[lineIndex] = { translatedText: lines[j], detectedSourceLanguage: detected } })
+      return
     }
-    // Line count drifted (rare) — fall back to translating this chunk line by line.
-    for (const lineIndex of chunk) {
-      const single = await freeRequest([text[lineIndex]], sourceLang, targetLang)
-      results[lineIndex] = { translatedText: single.lines.join(' '), detectedSourceLanguage: single.detected }
+    // Line count drifted (the translator merged or split a line): retry in halves, not line by line.
+    if (group.length === 1) {
+      results[group[0]] = { translatedText: lines.join(' '), detectedSourceLanguage: detected }
+      return
     }
+    const mid = Math.ceil(group.length / 2)
+    await translateGroup(group.slice(0, mid))
+    await translateGroup(group.slice(mid))
   }
+  for (const chunk of chunkLines(work.map(i => text[i]))) await translateGroup(chunk.map(k => work[k]))
   return results
 }
 
