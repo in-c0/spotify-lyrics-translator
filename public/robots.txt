@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://spotify-lyrics-translator.netlify.app/sitemap.xml
